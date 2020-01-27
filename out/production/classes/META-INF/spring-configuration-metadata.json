@@ -1,0 +1,42 @@
+{
+  "groups": [
+    {
+      "name": "qiniu",
+      "type": "com.lsd.eshouse.config.qiniu.QiNiuProperties",
+      "sourceType": "com.lsd.eshouse.config.qiniu.QiNiuProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "qiniu.access-key",
+      "type": "java.lang.String",
+      "sourceType": "com.lsd.eshouse.config.qiniu.QiNiuProperties"
+    },
+    {
+      "name": "qiniu.allow-types",
+      "type": "java.util.List<java.lang.String>",
+      "sourceType": "com.lsd.eshouse.config.qiniu.QiNiuProperties"
+    },
+    {
+      "name": "qiniu.bucket",
+      "type": "java.lang.String",
+      "sourceType": "com.lsd.eshouse.config.qiniu.QiNiuProperties"
+    },
+    {
+      "name": "qiniu.cdn-prefix",
+      "type": "java.lang.String",
+      "sourceType": "com.lsd.eshouse.config.qiniu.QiNiuProperties"
+    },
+    {
+      "name": "qiniu.host-prefix",
+      "type": "java.lang.String",
+      "sourceType": "com.lsd.eshouse.config.qiniu.QiNiuProperties"
+    },
+    {
+      "name": "qiniu.secret-key",
+      "type": "java.lang.String",
+      "sourceType": "com.lsd.eshouse.config.qiniu.QiNiuProperties"
+    }
+  ],
+  "hints": []
+}

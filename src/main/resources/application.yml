@@ -1,0 +1,36 @@
+spring:
+  profiles:
+    active: dev
+  servlet:
+    multipart:
+      enabled: true
+      file-size-threshold: 5MB        # 当文件大小大于这个阈值时将写入到磁盘，否则在内存中。默认值为0
+      max-request-size: 20MB          # 最大请求大小，单位为字节。默认没有限制
+      max-file-size: 20MB             # 文件的最大大小，单位为字节。默认没有限制
+      location: D:/毕业设计项目临时文件  # 上传文件所存放的临时目录。必须指定
+  #配置thymeleaf
+  thymeleaf:
+    enable-spring-el-compiler: true    #开启SpringEL表达式
+    cache: false
+  devtools:
+    restart:
+      exclude: templates/**,static/**  #thymeleaf缓存已被禁用，前端相关文件无需热加载
+#禁用浏览器中显示默认的错误信息页面
+server:
+  error:
+    whitelabel:
+      enabled: false
+# 七牛云配置
+qiniu:
+  accessKey: EkDLVyUgeJuKvc2AfeZLj4up7j8QduQRwuBeCPk6
+  secretKey: Pk_ioSF4-psi2DGVIdsqYmC8-f1UloVYaKiLNm3z
+  bucket: lee-study
+  cdnPrefix: cdn
+  hostPrefix: 5pnajx-natappfree-cc-idva5je.qiniudns.com/   # 外链默认域名
+  # 允许上传的文件格式
+  allowTypes:
+    - .bmp
+    - .jpg
+    - .jpeg
+    - .gif
+    - .png
