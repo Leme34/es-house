@@ -1,6 +1,6 @@
-package com.lee.repository;
+package com.lsd.eshouse.repository;
 
-import com.lee.EsHouseApplicationTest;
+import com.lsd.EsHouseApplicationTest;
 import com.lsd.eshouse.entity.User;
 import com.lsd.eshouse.repository.UserRepository;
 import org.junit.Test;

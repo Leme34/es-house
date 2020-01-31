@@ -15,6 +15,11 @@ spring:
   devtools:
     restart:
       exclude: templates/**,static/**  #thymeleaf缓存已被禁用，前端相关文件无需热加载
+  #配置kafka
+  kafka:
+    bootstrap-servers: 10.0.75.1:9092  #集群地址，以逗号分隔的主机：端口对列表
+    consumer:
+      group-id: es-house               #指定默认消费者组名字（group id）
 #禁用浏览器中显示默认的错误信息页面
 server:
   error:
@@ -34,3 +39,8 @@ qiniu:
     - .jpeg
     - .gif
     - .png
+
+#ES
+eshouse:
+  elasticsearch:
+    node-list: 127.0.0.1:9200

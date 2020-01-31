@@ -27,7 +27,7 @@ import javax.validation.Valid;
 import java.util.Map;
 
 /**
- * 房子
+ * 房源admin后台管理相关
  * <p>
  * Created by lsd
  * 2020-01-25 22:36
@@ -190,61 +190,5 @@ public class HouseController {
                 result.getMessage());
     }
 
-
-    /**
-     * 租房页面查询接口
-     */
-    @GetMapping("rent/house")
-    public String rentHousePage(@ModelAttribute RentSearchForm searchForm,
-                                Model model, HttpSession session,
-                                RedirectAttributes redirectAttributes) {
-        // 若searchForm没有选择城市，则用session中的城市
-        if (searchForm.getCityEnName() == null) {
-            String cityEnNameInSession = (String) session.getAttribute("cityEnName");
-            if (cityEnNameInSession == null) {
-                redirectAttributes.addAttribute("msg", "must_chose_city");
-                return "redirect:/index";
-            }
-            searchForm.setCityEnName(cityEnNameInSession);
-        } else {
-            // searchForm选择了城市则放入session
-            session.setAttribute("cityEnName", searchForm.getCityEnName());
-        }
-        // 查询城市是否存在
-        ResultVo<SupportAddressDTO> city = addressService.findCity(searchForm.getCityEnName());
-        if (!city.isSuccess()) {
-            redirectAttributes.addAttribute("msg", "must_chose_city");
-            return "redirect:/index";
-        }
-        model.addAttribute("currentCity", city.getResult());
-
-        // 查询城市下的所有地区
-        MultiResultVo<SupportAddressDTO> addressResult = addressService.findAllRegionsByCityName(searchForm.getCityEnName());
-        if (addressResult.getResult() == null || addressResult.getTotal() < 1) {
-            redirectAttributes.addAttribute("msg", "must_chose_city");
-            return "redirect:/index";
-        }
-
-        // 查询所有房源
-        MultiResultVo<HouseDTO> serviceMultiResult = houseService.query(searchForm);
-
-        model.addAttribute("total", serviceMultiResult.getTotal());
-        model.addAttribute("houses", serviceMultiResult.getResult());
-
-        if (searchForm.getRegionEnName() == null) {
-            searchForm.setRegionEnName("*");
-        }
-
-        model.addAttribute("searchBody", searchForm);
-        model.addAttribute("regions", addressResult.getResult());
-
-        model.addAttribute("priceBlocks", RentValueRangeBlock.PRICE_RANGE_MAP);
-        model.addAttribute("areaBlocks", RentValueRangeBlock.AREA_RANGE_MAP);
-
-        model.addAttribute("currentPriceBlock", RentValueRangeBlock.matchPrice(searchForm.getPriceBlock()));
-        model.addAttribute("currentAreaBlock", RentValueRangeBlock.matchArea(searchForm.getAreaBlock()));
-
-        return "rent-list";
-    }
 
 }

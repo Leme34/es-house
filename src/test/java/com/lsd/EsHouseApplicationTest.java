@@ -1,4 +1,4 @@
-package com.lee;
+package com.lsd;
 
 import com.lsd.eshouse.EsHouseApplication;
 import org.junit.runner.RunWith;

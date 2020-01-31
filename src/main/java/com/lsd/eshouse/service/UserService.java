@@ -1,9 +1,12 @@
 package com.lsd.eshouse.service;
 
+import com.lsd.eshouse.common.dto.UserDTO;
+import com.lsd.eshouse.common.vo.ResultVo;
 import com.lsd.eshouse.entity.Role;
 import com.lsd.eshouse.entity.User;
 import com.lsd.eshouse.repository.RoleRepository;
 import com.lsd.eshouse.repository.UserRepository;
+import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.authentication.DisabledException;
@@ -29,6 +32,8 @@ public class UserService implements UserDetailsService {
     private UserRepository userRepository;
     @Autowired
     private RoleRepository roleRepository;
+    @Autowired
+    private ModelMapper modelMapper;
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
@@ -38,7 +43,7 @@ public class UserService implements UserDetailsService {
         final List<Role> roleList = roleRepository.findRolesByUserId(user.getId());
         if (CollectionUtils.isEmpty(roleList)) {
             throw new DisabledException("权限不足");
-    }
+        }
         // 设置security的权限集合
         final List<GrantedAuthority> simpleAuthorities = roleList.stream()
                 .map(role ->
@@ -48,4 +53,12 @@ public class UserService implements UserDetailsService {
         return user;
     }
 
+    public ResultVo<UserDTO> findById(Integer userId) {
+        final User user = userRepository.findById(userId).get();
+        if (user == null) {
+            return ResultVo.notFound();
+        }
+        final UserDTO userDTO = modelMapper.map(user, UserDTO.class);
+        return ResultVo.of(userDTO);
+    }
 }

@@ -17,6 +17,7 @@ import com.lsd.eshouse.common.utils.LoginUserUtil;
 import com.lsd.eshouse.common.vo.MultiResultVo;
 import com.lsd.eshouse.common.vo.ResultVo;
 import com.lsd.eshouse.service.QiNiuService;
+import com.lsd.eshouse.service.SearchService;
 import com.qiniu.common.QiniuException;
 import com.qiniu.http.Response;
 import org.modelmapper.ModelMapper;
@@ -30,7 +31,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.persistence.criteria.Predicate;
-import javax.persistence.criteria.Root;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -45,24 +45,29 @@ import java.util.stream.Collectors;
 @Service
 public class HouseServiceImpl implements HouseService {
 
-    @Autowired
-    private ModelMapper modelMapper;
-    @Autowired
-    private HouseRepository houseRepository;
-    @Autowired
-    private HouseDetailRepository houseDetailRepository;
-    @Autowired
-    private SubwayStationRepository subwayStationRepository;
-    @Autowired
-    private SubwayRepository subwayRepository;
-    @Autowired
-    private HousePictureRepository housePictureRepository;
-    @Autowired
-    private HouseTagRepository houseTagRepository;
-    @Autowired
-    private QiNiuProperties qiNiuProperties;
-    @Autowired
-    private QiNiuService qiNiuService;
+    private final ModelMapper modelMapper;
+    private final HouseRepository houseRepository;
+    private final HouseDetailRepository houseDetailRepository;
+    private final SubwayStationRepository subwayStationRepository;
+    private final SubwayRepository subwayRepository;
+    private final HousePictureRepository housePictureRepository;
+    private final HouseTagRepository houseTagRepository;
+    private final QiNiuProperties qiNiuProperties;
+    private final QiNiuService qiNiuService;
+    private final SearchService searchService;
+
+    public HouseServiceImpl(ModelMapper modelMapper, HouseRepository houseRepository, HouseDetailRepository houseDetailRepository, SubwayStationRepository subwayStationRepository, SubwayRepository subwayRepository, HousePictureRepository housePictureRepository, HouseTagRepository houseTagRepository, QiNiuProperties qiNiuProperties, QiNiuService qiNiuService, SearchService searchService) {
+        this.modelMapper = modelMapper;
+        this.houseRepository = houseRepository;
+        this.houseDetailRepository = houseDetailRepository;
+        this.subwayStationRepository = subwayStationRepository;
+        this.subwayRepository = subwayRepository;
+        this.housePictureRepository = housePictureRepository;
+        this.houseTagRepository = houseTagRepository;
+        this.qiNiuProperties = qiNiuProperties;
+        this.qiNiuService = qiNiuService;
+        this.searchService = searchService;
+    }
 
     @Override
     public ResultVo<HouseDTO> save(HouseForm houseForm) {
@@ -208,6 +213,11 @@ public class HouseServiceImpl implements HouseService {
         house.setLastUpdateTime(LocalDateTime.now());
         houseRepository.save(house);
 
+        // 若是新上架的房子则建立索引
+        if (house.getStatus() == HouseStatus.PASSES.getValue()) {
+            searchService.index(house.getId());
+        }
+
         return ResultVo.success();
     }
 
@@ -260,6 +270,12 @@ public class HouseServiceImpl implements HouseService {
             return new ResultVo(false, "已删除的资源不允许操作");
         }
         houseRepository.updateStatus(id, status);
+        // 若修改为上架则索引，否则删除索引
+        if (status == HouseStatus.PASSES.getValue()) {
+            searchService.index(id);
+        } else {
+            searchService.remove(id);
+        }
         return ResultVo.success();
     }
 
@@ -275,7 +291,7 @@ public class HouseServiceImpl implements HouseService {
             Predicate predicate = criteriaBuilder.and(statusPredicate, cityEnNamePredicate);
             if (HouseSortUtil.DISTANCE_TO_SUBWAY_KEY.equals(searchForm.getOrderBy())) {
                 var distanceToSubwayPredicate = criteriaBuilder.gt(root.get(HouseSortUtil.DISTANCE_TO_SUBWAY_KEY), -1);
-                predicate = criteriaBuilder.and(predicate,distanceToSubwayPredicate);
+                predicate = criteriaBuilder.and(predicate, distanceToSubwayPredicate);
             }
             return predicate;
         };
