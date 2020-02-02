@@ -15,7 +15,7 @@ public class SearchServiceTest extends EsHouseApplicationTest {
 
     @Test
     public void index() {
-        searchService.index(15)
+        searchService.index(15);
     }
 
 }

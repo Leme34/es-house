@@ -1,6 +1,7 @@
 package com.lsd.eshouse.service.impl;
 
 import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import com.lsd.eshouse.common.index.HouseIndex;
 import com.lsd.eshouse.common.index.HouseIndexKey;
 import com.lsd.eshouse.common.index.HouseIndexMessage;
@@ -41,6 +42,7 @@ import org.springframework.util.CollectionUtils;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -222,11 +224,12 @@ public class SearchServiceImpl implements SearchService {
      * @param documentId 新增传null或者空字符串，更新传索引文档id
      */
     private boolean createUpdateIndex(String documentId, HouseIndex index) {
+        // 构造索引请求，source不能是json串了应该传Map<String,Object>类型，而且通过opType限定操作类型
         DocWriteRequest.OpType opType = StringUtils.isBlank(documentId) ?
-                DocWriteRequest.OpType.CREATE : DocWriteRequest.OpType.UPDATE;
-        // 构造索引请求，此处通过opType限定操作类型
+                DocWriteRequest.OpType.CREATE : DocWriteRequest.OpType.INDEX;
+        final Map<String, Object> map = gson.fromJson(gson.toJson(index), new TypeToken<Map<String, Object>>() {}.getType());
         final var request = new IndexRequest(INDEX_NAME, INDEX_TYPE, documentId)
-                .source(gson.toJson(index))
+                .source(map)
                 .opType(opType);
         try {
             IndexResponse response = rhlClient.index(request, RequestOptions.DEFAULT);

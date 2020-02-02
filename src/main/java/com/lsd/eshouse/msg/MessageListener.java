@@ -8,6 +8,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+
 import static com.lsd.eshouse.common.index.HouseIndexMessage.IndexOperation;
 
 /**
@@ -43,7 +45,7 @@ public class MessageListener {
                             searchService.doIndex(houseId, retry);
                             break;
                         case REMOVE:
-                            searchService.remove(houseId);
+                            searchService.doRemove(houseId, retry);
                             break;
                         default:
                             log.warn("不支持的消息内容，消息体：{}", content);

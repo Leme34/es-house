@@ -30,7 +30,7 @@ public class R {
         NOT_VALID_PARAM(40005, "Not valid Params"),
         NOT_SUPPORTED_OPERATION(40006, "Operation not supported"),
         NOT_LOGIN(50000, "Not Login");
-        ;
+
         private int code;
         private String message;
     }
