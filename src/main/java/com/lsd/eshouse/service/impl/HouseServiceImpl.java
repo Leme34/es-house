@@ -20,6 +20,7 @@ import com.lsd.eshouse.service.QiNiuService;
 import com.lsd.eshouse.service.SearchService;
 import com.qiniu.common.QiniuException;
 import com.qiniu.http.Response;
+import org.apache.commons.lang3.StringUtils;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -281,7 +282,34 @@ public class HouseServiceImpl implements HouseService {
 
     @Override
     public MultiResultVo<HouseDTO> query(RentSearchForm searchForm) {
+        // 涉及搜索关键词的使用es
+        if (StringUtils.isNotBlank(searchForm.getKeywords())) {
+            return queryIndex(searchForm);
+        }
         // 条件分页查询house
+        return queryPage(searchForm);
+    }
+
+    /**
+     * 先根据关键词索引出匹配的房源id，再去数据库查询
+     */
+    private MultiResultVo<HouseDTO> queryIndex(RentSearchForm searchForm) {
+        final var searchResult = searchService.search(searchForm);
+        // 若没有索引匹配的结果返回空
+        if (searchResult.getTotal() == 0) {
+            return new MultiResultVo<>(0, List.of());
+        }
+        // 用索引出的id查询数据库
+        var houseList = houseRepository.findAllById(searchResult.getResult());
+        // 查询并填充houseDetail信息
+        final var houseDTOList = wrapperHouseDTOListInfo(houseList);
+        return new MultiResultVo<>(searchResult.getTotal(), houseDTOList);
+    }
+
+    /**
+     * 不走索引，直接条件分页查询数据库
+     */
+    private MultiResultVo<HouseDTO> queryPage(RentSearchForm searchForm) {
         var sort = HouseSortUtil.getSort(searchForm.getOrderBy(), searchForm.getOrderDirection());
         int page = searchForm.getStart() / searchForm.getSize();
         var pageRequest = PageRequest.of(page, searchForm.getSize(), sort);
@@ -296,38 +324,41 @@ public class HouseServiceImpl implements HouseService {
             return predicate;
         };
         var housePage = houseRepository.findAll(specification, pageRequest);
-
-        // houseDetail信息，空间换时间
-        Map<Integer, HouseDTO> houseDTOMap = new HashMap<>();
-        // 转换DTO对象
-        final List<HouseDTO> houseDTOList = housePage.stream().map(house -> {
-            var houseDTO = modelMapper.map(house, HouseDTO.class);
-            houseDTO.setCover(qiNiuProperties.getCdnPrefix() + house.getCover());
-            houseDTOMap.put(houseDTO.getId(), new HouseDTO());
-            return houseDTO;
-        }).collect(Collectors.toList());
-
         // 查询并填充houseDetail信息
-        wrapperHouseDTOListInfo(houseDTOMap);
+        final List<HouseDTO> houseDTOList = wrapperHouseDTOListInfo(housePage.getContent());
 
         return new MultiResultVo<>(housePage.getTotalElements(), houseDTOList);
     }
 
     /**
-     * 查询并填充houseDetail信息
+     * 查询并填充houseDetail、houseTag信息
      */
-    private void wrapperHouseDTOListInfo(Map<Integer, HouseDTO> houseDTOMap) {
-        houseDetailRepository.findAllByHouseIdIn(houseDTOMap.keySet())
+    private List<HouseDTO> wrapperHouseDTOListInfo(List<House> houseList) {
+        //空间换时间
+        Map<Integer, HouseDTO> houseDTOMap = new HashMap<>();
+        final List<HouseDTO> houseDTOList = new ArrayList<>();
+        // 转换DTO对象
+        final var houseIds = houseList.stream().map(house -> {
+            var houseDTO = modelMapper.map(house, HouseDTO.class);
+            houseDTO.setCover(qiNiuProperties.getCdnPrefix() + house.getCover());
+            // 加入结果集
+            houseDTOList.add(houseDTO);
+            //用引用去后续处理
+            houseDTOMap.put(house.getId(), houseDTO);
+            return house.getId();
+        }).collect(Collectors.toList());
+        houseDetailRepository.findAllByHouseIdIn(houseIds)
                 .forEach(houseDetail -> {
                     HouseDTO houseDTO = houseDTOMap.get(houseDetail.getHouseId());
                     HouseDetailDTO houseDetailDTO = modelMapper.map(houseDetail, HouseDetailDTO.class);
                     houseDTO.setHouseDetail(houseDetailDTO);
                 });
-        houseTagRepository.findAllByHouseIdIn(houseDTOMap.keySet())
+        houseTagRepository.findAllByHouseIdIn(houseIds)
                 .forEach(tag -> {
                     HouseDTO houseDTO = houseDTOMap.get(tag.getHouseId());
                     houseDTO.getTags().add(tag.getName());
                 });
+        return houseDTOList;
     }
 
     /**

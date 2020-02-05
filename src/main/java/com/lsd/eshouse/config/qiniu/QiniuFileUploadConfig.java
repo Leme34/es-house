@@ -108,12 +108,4 @@ public class QiniuFileUploadConfig {
         return new BucketManager(auth(), qiniuConfig());
     }
 
-    /**
-     * 注册Gson为json解析工具
-     */
-    @Bean
-    public Gson gson() {
-        return new Gson();
-    }
-
 }

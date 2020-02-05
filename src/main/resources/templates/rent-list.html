@@ -12,8 +12,8 @@
     <meta name="keywords" content="寻屋"/>
     <link href="/static/css/main.css" rel='stylesheet' type='text/css'/>
     <link href="/static/css/list.css" rel='stylesheet' type='text/css'/>
-    <link href="/static/lib/layui/layui.css" rel="stylesheet" type="text/css" />
-    <link href="/static/lib/jquery-ui-1.12.1/jquery-ui.min.css" rel="stylesheet" type="text/css" />
+    <link href="/static/lib/layui/layui.css" rel="stylesheet" type="text/css"/>
+    <link href="/static/lib/jquery-ui-1.12.1/jquery-ui.min.css" rel="stylesheet" type="text/css"/>
 </head>
 <body>
 
@@ -30,7 +30,7 @@
                         <div class="txt-search">
                             <input class="left txt" name="keyword" autocomplete="off"
                                    placeholder="如小区名、地铁站等" id="keyword-box"
-                                    th:value="${searchBody.keywords != null} ? ${searchBody.keywords} : ''"/>
+                                   th:value="${searchBody.keywords != null} ? ${searchBody.keywords} : ''"/>
                         </div>
                     </div>
                     <button type="submit" class="act-search btn home-ico ico-search LOGCLICKEVTID">
@@ -80,7 +80,7 @@
                                onclick="changeSimpleCondition('regionEnName', '*')">不限</a>
                             <tr th:each="region, regionStat: ${regions}">
                                 <a th:attr="data-bind=${region.enName}" href="javascript:void(0);"
-                                   th:onclick="'changeSimpleCondition(\'regionEnName\',  [[${region.enName}]])'"
+                                   th:onclick="changeSimpleCondition('regionEnName', [[${region.enName}]])"
                                    th:text="${region.cnName}"></a>
                             </tr>
                         </div>
@@ -95,7 +95,7 @@
                             </a>
                             <tr th:each="priceBlock : ${priceBlocks}">
                                 <a th:attr="data-bind=${priceBlock.key}" href="javascript:void(0);"
-                                   th:onclick="'changeSimpleCondition(\'priceBlock\',[[${priceBlock.key}]])'"
+                                   th:onclick="changeSimpleCondition('priceBlock',[[${priceBlock.key}]])"
                                    th:text="${priceBlock.value.min < 0} ? (${priceBlock.value.max} + '元以下' ):
                                     (${priceBlock.value.max < 0} ? ${priceBlock.value.min} + '元以上' :
                                      ${priceBlock.value.min} + '-' + ${priceBlock.value.max} + '元')">
@@ -113,7 +113,7 @@
                             </a>
                             <tr th:each="areaBlock : ${areaBlocks}">
                                 <a th:attr="data-bind=${areaBlock.key}" href="javascript:void(0);"
-                                   th:onclick="'changeSimpleCondition(\'areaBlock\',[[${areaBlock.key}]])'"
+                                   th:onclick="changeSimpleCondition('areaBlock',[[${areaBlock.key}]])"
                                    th:text="${areaBlock.value.min < 0} ? (${areaBlock.value.max} + '平以下' ):
                                     (${areaBlock.value.max < 0} ? ${areaBlock.value.min} + '平以上' :
                                      ${areaBlock.value.min} + '-' + ${areaBlock.value.max} + '平')">
@@ -266,13 +266,13 @@
                                     <div class="chanquan">
                                         <div class="left agency">
                                             <div class="view-label left">
-                                                <span th:if="#{house.houseDetail.subwayLineName != null}">
+                                                <span th:if="${house.houseDetail.subwayLineName} != null">
                                                     <span class="fang-subway"></span>
                                                     <span class="fang-subway-ex">
                                                         <span>距离地铁
-                                                            <span th:text="#{house.houseDetail.subwayLineName}"></span>
-                                                            <span th:text="#{house.houseDetail.subwayStationName}"></span>站
-                                                            <span th:text="#{house.distanceToSubway}"></span>米</span>
+                                                            <span th:text="${house.houseDetail.subwayLineName}"></span>
+                                                            <span th:text="${house.houseDetail.subwayStationName}"></span>站
+                                                            <span th:text="${house.distanceToSubway}"></span>米</span>
                                                     </span>
                                                 </span>
                                                 <span th:each="tag: ${house.tags}">
@@ -319,10 +319,10 @@
 <div th:include="common :: footer"></div>
 <script type="text/javascript" src="/static/lib/jquery-ui-1.12.1/jquery-ui.min.js"></script>
 <script type='text/javascript'>
-    (function(m, ei, q, i, a, j, s) {
-        m[i] = m[i] || function() {
-                (m[i].a = m[i].a || []).push(arguments)
-            };
+    (function (m, ei, q, i, a, j, s) {
+        m[i] = m[i] || function () {
+            (m[i].a = m[i].a || []).push(arguments)
+        };
         j = ei.createElement(q),
             s = ei.getElementsByTagName(q)[0];
         j.async = true;
@@ -340,7 +340,7 @@
 
     function locate_url(start, size) {
         var keywords = $('#keyword-box').val();
-        if (typeof(keywords) !== 'undefined' && keywords !== null && keywords.length > 0) {
+        if (typeof (keywords) !== 'undefined' && keywords !== null && keywords.length > 0) {
             data.keywords = keywords;
         }
 
@@ -393,7 +393,7 @@
         $('.room-select a[data-bind="' + [[${searchBody.room}]] + '"]').addClass('on');
         $('.direction-select a[data-bind="' + [[${searchBody.direction}]] + '"]').addClass('on');
         $('.rent-way-select a[data-bind="' + [[${searchBody.rentWay}]] + '"]').addClass('on');
-        $('#sort-bar').find('div[data-bind="' + data.orderBy +  '"]').addClass('on');
+        $('#sort-bar').find('div[data-bind="' + data.orderBy + '"]').addClass('on');
 
         if (data.orderBy === 'area') {
             var areaSpanText = '';

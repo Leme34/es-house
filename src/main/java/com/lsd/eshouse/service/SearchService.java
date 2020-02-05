@@ -1,5 +1,8 @@
 package com.lsd.eshouse.service;
 
+import com.lsd.eshouse.common.form.RentSearchForm;
+import com.lsd.eshouse.common.vo.MultiResultVo;
+
 /**
  * 房源搜索
  * <p>
@@ -33,4 +36,10 @@ public interface SearchService {
      */
     void remove(Integer houseId);
 
+    /**
+     * 房源搜索接口
+     *
+     * @return 匹配的房源ids
+     */
+    MultiResultVo<Integer> search(RentSearchForm searchForm);
 }

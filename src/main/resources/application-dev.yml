@@ -6,7 +6,7 @@ spring:
     password: 123456
   # JPA配置
   jpa:
-    show-sql: true
+#    show-sql: true
     generate-ddl: false  #不使用jpa生成sql
     hibernate:
       ddl-auto: validate #启动时校验数据库表结构，而不做增删改操作
@@ -16,8 +16,8 @@ spring:
         # 实体类字段使用驼峰命名映射
         physical-strategy: org.springframework.boot.orm.jpa.hibernate.SpringPhysicalNamingStrategy
 
-logging:
-  level:
-    org:
-      hibernate:
-        SQL: debug
+#logging:
+#  level:
+#    org:
+#      hibernate:
+#        SQL: debug

@@ -54,6 +54,7 @@ dependencies {
     compile "org.elasticsearch.client:elasticsearch-rest-high-level-client:${elasticSearchVersion}"
     compile "org.elasticsearch.client:elasticsearch-rest-client-sniffer:${elasticSearchVersion}"
     compile "org.springframework.kafka:spring-kafka"
+    compile "com.google.guava:guava:28.2-jre"
 
 
     runtime 'mysql:mysql-connector-java:8.0.18'

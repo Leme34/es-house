@@ -21,12 +21,18 @@ public class HouseSortUtil {
     );
 
     public static Sort getSort(String key, String directionKey) {
+        String sortKey = getSortKey(key);
+        Sort.Direction direction = Sort.Direction.fromOptionalString(directionKey)
+                .orElse(Sort.Direction.DESC);
+        return new Sort(direction, sortKey);
+    }
+
+    public static String getSortKey(String key) {
         if (!SORT_KEYS.contains(key)) {
             key = DEFAULT_SORT_KEY;
         }
-        Sort.Direction direction = Sort.Direction.fromOptionalString(directionKey)
-                .orElse(direction = Sort.Direction.DESC);
-        return new Sort(direction, key);
+
+        return key;
     }
 
 }

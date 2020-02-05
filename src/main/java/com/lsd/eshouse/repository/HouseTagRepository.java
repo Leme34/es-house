@@ -11,5 +11,5 @@ public interface HouseTagRepository extends JpaRepository<HouseTag, Integer>, Jp
 
     List<HouseTag> findAllByHouseId(Integer id);
 
-    List<HouseTag> findAllByHouseIdIn(Set<Integer> keySet);
+    List<HouseTag> findAllByHouseIdIn(List<Integer> keySet);
 }

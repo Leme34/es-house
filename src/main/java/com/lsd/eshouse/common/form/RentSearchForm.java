@@ -1,6 +1,7 @@
 package com.lsd.eshouse.common.form;
 
 import lombok.ToString;
+import lombok.experimental.Accessors;
 
 /**
  * 租房请求参数结构体

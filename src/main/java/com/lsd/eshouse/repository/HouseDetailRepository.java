@@ -11,6 +11,6 @@ public interface HouseDetailRepository extends JpaRepository<HouseDetail, Intege
 
     HouseDetail findByHouseId(Integer houseId);
 
-    List<HouseDetail> findAllByHouseIdIn(Set<Integer> houseIds);
+    List<HouseDetail> findAllByHouseIdIn(List<Integer> houseIds);
 
 }

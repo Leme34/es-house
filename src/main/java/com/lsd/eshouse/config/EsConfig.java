@@ -14,7 +14,9 @@ import org.springframework.context.annotation.Configuration;
 import java.util.List;
 
 /**
- * ES配置类，仅支持HTTP
+ * ES配置类
+ *  1.仅支持HTTP
+ *  2.嗅探不支持 spring-boot-devtools，热部署后sniffing nodes会报错：Request cannot be executed; I/O reactor status: STOPPED
  * <p>
  * Created by lsd
  * 2020-01-28 23:59

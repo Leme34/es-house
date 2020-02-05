@@ -17,7 +17,7 @@ spring:
       exclude: templates/**,static/**  #thymeleaf缓存已被禁用，前端相关文件无需热加载
   #配置kafka
   kafka:
-    bootstrap-servers: 192.168.101.10:9092  #集群地址，以逗号分隔的主机：端口对列表
+    bootstrap-servers: 192.168.101.6:9092  #集群地址，以逗号分隔的主机：端口对列表
     consumer:
       group-id: es-house               #指定默认消费者组名字（group id）
       enable-auto-commit: false        #是否让kafka去自动提交offset，默认值为true，设为false则让Spring（代理）自动提交offset
@@ -44,5 +44,11 @@ qiniu:
 #ES
 eshouse:
   elasticsearch:
-    node-list: 192.168.101.10:9200
+    node-list: 192.168.101.6:9200
     max-retry: 3              #索引构建重试最大次数
+
+logging:
+  level:
+    com:
+      lsd:
+        eshouse: debug

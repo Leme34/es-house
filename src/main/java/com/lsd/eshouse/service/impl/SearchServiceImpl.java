@@ -1,10 +1,15 @@
 package com.lsd.eshouse.service.impl;
 
+import com.google.common.primitives.Longs;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import com.lsd.eshouse.common.constant.RentValueRangeBlock;
+import com.lsd.eshouse.common.form.RentSearchForm;
 import com.lsd.eshouse.common.index.HouseIndex;
 import com.lsd.eshouse.common.index.HouseIndexKey;
 import com.lsd.eshouse.common.index.HouseIndexMessage;
+import com.lsd.eshouse.common.utils.HouseSortUtil;
+import com.lsd.eshouse.common.vo.MultiResultVo;
 import com.lsd.eshouse.entity.House;
 import com.lsd.eshouse.entity.HouseTag;
 import com.lsd.eshouse.msg.MessageListener;
@@ -22,16 +27,21 @@ import org.elasticsearch.action.DocWriteRequest;
 import org.elasticsearch.action.DocWriteResponse;
 import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.delete.DeleteResponse;
+import org.elasticsearch.action.index.IndexAction;
 import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.action.search.SearchRequest;
+import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.support.replication.ReplicationResponse;
 import org.elasticsearch.client.*;
-import org.elasticsearch.index.query.BoolQueryBuilder;
-import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.common.bytes.BytesReference;
+import org.elasticsearch.common.xcontent.XContentHelper;
+import org.elasticsearch.index.query.*;
 import org.elasticsearch.index.reindex.DeleteByQueryRequest;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
+import org.elasticsearch.search.sort.SortOrder;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -104,8 +114,8 @@ public class SearchServiceImpl implements SearchService {
         houseIndex.setHouseId(houseId);
 
         // 索引前先term查询索引是否存在
-        var sq = new SearchSourceBuilder().query(QueryBuilders.termQuery(HouseIndexKey.HOUSE_ID, houseId));
-        var searchRequest = new SearchRequest(INDEX_NAME).source(sq);
+        var sourceBuilder = new SearchSourceBuilder().query(QueryBuilders.termQuery(HouseIndexKey.HOUSE_ID, houseId));
+        var searchRequest = new SearchRequest(INDEX_NAME).source(sourceBuilder);
         boolean success = false;
         try {
             final var response = rhlClient.search(searchRequest, RequestOptions.DEFAULT);
@@ -203,8 +213,8 @@ public class SearchServiceImpl implements SearchService {
         try {
             final Request request = new Request(HttpPost.METHOD_NAME, "/" + INDEX_NAME + "/" + INDEX_TYPE);
             request.setJsonEntity(gson.toJson(index));
+            log.debug(gson.toJson(request));
             Response response = restClient.performRequest(request);
-            log.debug("创建房源索引，houseId = " + index.getHouseId());
             // 是否创建成功
             final int statusCode = response.getStatusLine().getStatusCode();
             if (statusCode == HttpStatus.SC_CREATED) {
@@ -227,18 +237,20 @@ public class SearchServiceImpl implements SearchService {
         // 构造索引请求，source不能是json串了应该传Map<String,Object>类型，而且通过opType限定操作类型
         DocWriteRequest.OpType opType = StringUtils.isBlank(documentId) ?
                 DocWriteRequest.OpType.CREATE : DocWriteRequest.OpType.INDEX;
-        final Map<String, Object> map = gson.fromJson(gson.toJson(index), new TypeToken<Map<String, Object>>() {}.getType());
+        final Map<String, Object> map = gson.fromJson(gson.toJson(index), new TypeToken<Map<String, Object>>() {
+        }.getType());
         final var request = new IndexRequest(INDEX_NAME, INDEX_TYPE, documentId)
                 .source(map)
                 .opType(opType);
+        log.debug(gson.toJson(map));
         try {
             IndexResponse response = rhlClient.index(request, RequestOptions.DEFAULT);
             //处理首次创建文档的情况
             if (response.getResult() == DocWriteResponse.Result.CREATED) {
-                log.debug("创建房源索引，houseId = " + index.getHouseId());
+                log.debug("创建房源索引成功，houseId = " + index.getHouseId());
                 return true;
             } else if (response.getResult() == DocWriteResponse.Result.UPDATED) { //处理文档已经存在时被覆盖的情况
-                log.debug("更新房源索引，houseId = " + index.getHouseId());
+                log.debug("更新房源索引成功，houseId = " + index.getHouseId());
                 return true;
             }
             // 失败处理
@@ -296,15 +308,16 @@ public class SearchServiceImpl implements SearchService {
         BoolQueryBuilder qb = QueryBuilders.boolQuery()
                 .filter(QueryBuilders.termQuery(HouseIndexKey.HOUSE_ID, houseId));
         var request = new DeleteByQueryRequest(INDEX_NAME).setQuery(qb);
+        log.debug(qb.toString());
         try {
             var response = rhlClient.deleteByQuery(request, RequestOptions.DEFAULT);
-
             final long totalHits = response.getTotal();      // 查到的文档数
             final long deletedDocs = response.getDeleted();  // 删除的文档数
             if (deletedDocs != totalHits) {
                 log.warn("已删除的数目 < 需要删除的数目，需要删除的数目：{}，已删除的数目：{}", totalHits, deletedDocs);
                 retryRemoveIndex(houseId, retry + 1);
             }
+            log.debug("删除索引成功，houseId = " + houseId);
         } catch (IOException e) {
             log.error("删除索引出错，houseId = " + houseId, e);
         }
@@ -313,6 +326,80 @@ public class SearchServiceImpl implements SearchService {
     @Override
     public void remove(Integer houseId) {
         this.removeAsync(houseId, 0);
+    }
+
+    @Override
+    public MultiResultVo<Integer> search(RentSearchForm searchForm) {
+        // 城市、地区等筛选栏使用filterQuery
+        final var boolQB = new BoolQueryBuilder().filter(new TermQueryBuilder(HouseIndexKey.CITY_EN_NAME, searchForm.getCityEnName()));
+        final String regionEnName = searchForm.getRegionEnName();
+        if (StringUtils.isNotBlank(regionEnName) && !StringUtils.equals(regionEnName, "*")) {
+            boolQB.filter(new TermQueryBuilder(HouseIndexKey.REGION_EN_NAME, regionEnName));
+        }
+        // keywords使用multiQuery
+        boolQB.must(
+                new MultiMatchQueryBuilder(searchForm.getKeywords(),
+                        HouseIndexKey.TITLE,
+                        HouseIndexKey.TRAFFIC,
+                        HouseIndexKey.DISTRICT,
+                        HouseIndexKey.ROUND_SERVICE,
+                        HouseIndexKey.SUBWAY_LINE_NAME,
+                        HouseIndexKey.SUBWAY_STATION_NAME)
+        );
+        // 面积、租金使用rangeQuery
+        final var areaRange = RentValueRangeBlock.matchArea(searchForm.getAreaBlock());
+        final var priceRange = RentValueRangeBlock.matchPrice(searchForm.getPriceBlock());
+        if (!RentValueRangeBlock.ALL.equals(areaRange)) {
+            final var rangeQB = QueryBuilders.rangeQuery(HouseIndexKey.AREA);
+            if (areaRange.getMin() > 0) {
+                rangeQB.gte(areaRange.getMin());
+            }
+            if (areaRange.getMax() > 0) {
+                rangeQB.lte(areaRange.getMax());
+            }
+            boolQB.filter(rangeQB);
+        }
+        if (!RentValueRangeBlock.ALL.equals(priceRange)) {
+            final var rangeQB = QueryBuilders.rangeQuery(HouseIndexKey.PRICE);
+            if (priceRange.getMin() > 0) {
+                rangeQB.gte(priceRange.getMin());
+            }
+            if (priceRange.getMax() > 0) {
+                rangeQB.lte(priceRange.getMax());
+            }
+            boolQB.filter(rangeQB);
+        }
+
+        //朝向
+        if (searchForm.getDirection() > 0) {
+            boolQB.filter(QueryBuilders.termQuery(HouseIndexKey.DIRECTION, searchForm.getDirection()));
+        }
+        //租赁方式
+        if (searchForm.getRentWay() > -1) {
+            boolQB.filter(QueryBuilders.termQuery(HouseIndexKey.RENT_WAY, searchForm.getRentWay()));
+        }
+        //搜索
+        final var sourceBuilder = new SearchSourceBuilder()
+                .query(boolQB)
+                .sort(HouseSortUtil.getSortKey(searchForm.getOrderBy()), SortOrder.fromString(searchForm.getOrderDirection()))
+                .from(searchForm.getStart())
+                .size(searchForm.getSize());
+        final var searchRequest = new SearchRequest(INDEX_NAME).source(sourceBuilder);
+        log.debug(sourceBuilder.toString());
+        try {
+            final var response = rhlClient.search(searchRequest, RequestOptions.DEFAULT);
+            if (response.status() != RestStatus.OK) {
+                log.warn("查询失败，searchRequest = {}", searchRequest.toString());
+                return new MultiResultVo<>(0, List.of());
+            }
+            final var houseIds = Arrays.stream(response.getHits().getHits()).map(hit ->
+                    Integer.parseInt(String.valueOf(hit.getSourceAsMap().get(HouseIndexKey.HOUSE_ID)))
+            ).collect(Collectors.toList());
+            return new MultiResultVo<>(response.getHits().totalHits, houseIds);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 
     /**
@@ -335,7 +422,7 @@ public class SearchServiceImpl implements SearchService {
         //处理成功的分片数少于总分片的情况
         if (shardInfo.getTotal() != shardInfo.getSuccessful()) {
             log.warn("索引操作成功的分片数少于总分片，houseId = " + houseId);
-            return true;  //TODO 是否算成功？
+            return false;
         }
         //处理潜在的故障
         if (shardInfo.getFailed() > 0) {
