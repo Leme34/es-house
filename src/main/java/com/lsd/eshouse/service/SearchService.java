@@ -2,6 +2,9 @@ package com.lsd.eshouse.service;
 
 import com.lsd.eshouse.common.form.RentSearchForm;
 import com.lsd.eshouse.common.vo.MultiResultVo;
+import com.lsd.eshouse.common.vo.ResultVo;
+
+import java.util.List;
 
 /**
  * 房源搜索
@@ -42,4 +45,10 @@ public interface SearchService {
      * @return 匹配的房源ids
      */
     MultiResultVo<Integer> search(RentSearchForm searchForm);
+
+    /**
+     * 根据输入内容获取补全建议关键词
+     * @param prefix 用户输入的内容
+     */
+    ResultVo<List<String>> suggest(String prefix);
 }

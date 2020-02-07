@@ -1,5 +1,6 @@
 package com.lsd.eshouse.common.index;
 
+import com.lsd.eshouse.common.dto.HouseSuggest;
 import lombok.Data;
 
 import java.util.Date;
@@ -50,5 +51,8 @@ public class HouseIndex {
     private int rentWay;
 
     private List<String> tags;
+
+    // 索引中存储的自动补全关键词列表
+    private List<HouseSuggest> suggest;
 
 }

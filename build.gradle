@@ -28,7 +28,7 @@ repositories {
 }
 
 ext {
-    elasticSearchVersion = "6.8.0"
+    elasticSearchVersion = "7.5+"
 }
 
 

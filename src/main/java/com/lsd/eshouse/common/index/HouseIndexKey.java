@@ -24,6 +24,7 @@ public class HouseIndexKey {
     public static final String SUBWAY_LINE_NAME = "subwayLineName";
     public static final String SUBWAY_STATION_NAME = "subwayStationName";
     public static final String TAGS = "tags";
+    public static final String suggestion = "suggest";
     public static final String AGG_DISTRICT = "agg_district";
     public static final String AGG_REGION = "agg_region";
 }

@@ -6,20 +6,21 @@ import com.lsd.eshouse.common.dto.SupportAddressDTO;
 import com.lsd.eshouse.common.dto.UserDTO;
 import com.lsd.eshouse.common.form.RentSearchForm;
 import com.lsd.eshouse.common.vo.MultiResultVo;
+import com.lsd.eshouse.common.vo.R;
 import com.lsd.eshouse.common.vo.ResultVo;
 import com.lsd.eshouse.entity.SupportAddress;
 import com.lsd.eshouse.service.AddressService;
 import com.lsd.eshouse.service.HouseService;
+import com.lsd.eshouse.service.SearchService;
 import com.lsd.eshouse.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.ModelAttribute;
-import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import javax.servlet.http.HttpSession;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -37,6 +38,8 @@ public class RentController {
     private HouseService houseService;
     @Autowired
     private UserService userService;
+    @Autowired
+    private SearchService searchService;
 
     /**
      * 租房页面查询接口
@@ -117,6 +120,20 @@ public class RentController {
         // 地区房源数量聚合信息
         model.addAttribute("houseCountInDistrict", 0);
         return "house-detail";
+    }
+
+    /**
+     * 自动补全接口
+     */
+    @GetMapping("rent/house/autocomplete")
+    @ResponseBody
+    public R autocomplete(@RequestParam(value = "prefix") String prefix) {
+
+        if (prefix.isEmpty()) {
+            return R.ok(R.StatusEnum.BAD_REQUEST);
+        }
+        ResultVo<List<String>> result = searchService.suggest(prefix);
+        return R.ok(result.getResult());
     }
 
 }

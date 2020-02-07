@@ -1,15 +1,17 @@
 package com.lsd.eshouse.service.impl;
 
-import com.google.common.primitives.Longs;
+import com.google.common.collect.Lists;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.lsd.eshouse.common.constant.RentValueRangeBlock;
+import com.lsd.eshouse.common.dto.HouseSuggest;
 import com.lsd.eshouse.common.form.RentSearchForm;
 import com.lsd.eshouse.common.index.HouseIndex;
 import com.lsd.eshouse.common.index.HouseIndexKey;
 import com.lsd.eshouse.common.index.HouseIndexMessage;
 import com.lsd.eshouse.common.utils.HouseSortUtil;
 import com.lsd.eshouse.common.vo.MultiResultVo;
+import com.lsd.eshouse.common.vo.ResultVo;
 import com.lsd.eshouse.entity.House;
 import com.lsd.eshouse.entity.HouseTag;
 import com.lsd.eshouse.msg.MessageListener;
@@ -21,27 +23,31 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpPut;
 import org.apache.http.util.EntityUtils;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.DocWriteRequest;
 import org.elasticsearch.action.DocWriteResponse;
 import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.delete.DeleteResponse;
-import org.elasticsearch.action.index.IndexAction;
 import org.elasticsearch.action.index.IndexRequest;
-import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.support.replication.ReplicationResponse;
 import org.elasticsearch.client.*;
-import org.elasticsearch.common.bytes.BytesReference;
-import org.elasticsearch.common.xcontent.XContentHelper;
-import org.elasticsearch.index.query.*;
+import org.elasticsearch.client.indices.AnalyzeRequest;
+import org.elasticsearch.index.query.BoolQueryBuilder;
+import org.elasticsearch.index.query.MultiMatchQueryBuilder;
+import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.index.query.TermQueryBuilder;
 import org.elasticsearch.index.reindex.DeleteByQueryRequest;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.sort.SortOrder;
+import org.elasticsearch.search.suggest.SuggestBuilder;
+import org.elasticsearch.search.suggest.SuggestBuilders;
+import org.elasticsearch.search.suggest.completion.CompletionSuggestion;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -50,10 +56,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -66,7 +69,7 @@ import java.util.stream.Collectors;
 @Service
 public class SearchServiceImpl implements SearchService {
     private static final String INDEX_NAME = "house";
-    private static final String INDEX_TYPE = "house";
+    private static final String IK_SMART = "ik_smart";
     @Autowired
     private HouseRepository houseRepository;
     @Autowired
@@ -85,6 +88,8 @@ public class SearchServiceImpl implements SearchService {
     private KafkaTemplate<String, String> kafkaTemplate;
     @Value("${eshouse.elasticsearch.max-retry:3}")
     private Integer maxReTry;
+    @Value("${eshouse.elasticsearch.max-suggest:5}")
+    private Integer maxSuggest;
 
 
     @Override
@@ -119,7 +124,7 @@ public class SearchServiceImpl implements SearchService {
         boolean success = false;
         try {
             final var response = rhlClient.search(searchRequest, RequestOptions.DEFAULT);
-            final var totalHits = response.getHits().getTotalHits();
+            final var totalHits = response.getHits().getTotalHits().value;
             // 索引不存在，则创建索引
             if (totalHits == 0) {
                 success = this.createIndex(houseIndex);
@@ -210,10 +215,14 @@ public class SearchServiceImpl implements SearchService {
      * 新增索引，使用低级restClient
      */
     private boolean createIndex(HouseIndex index) {
+        // 分析索引数据并放入到索引的自动补全关键词列表
+        if (!analyzeSuggestion(index)) {
+            return false;
+        }
         try {
-            final Request request = new Request(HttpPost.METHOD_NAME, "/" + INDEX_NAME + "/" + INDEX_TYPE);
+            final Request request = new Request(HttpPost.METHOD_NAME, "/" + INDEX_NAME + "/_doc");
             request.setJsonEntity(gson.toJson(index));
-            log.debug(gson.toJson(request));
+            log.debug(gson.toJson(index));
             Response response = restClient.performRequest(request);
             // 是否创建成功
             final int statusCode = response.getStatusLine().getStatusCode();
@@ -234,12 +243,18 @@ public class SearchServiceImpl implements SearchService {
      * @param documentId 新增传null或者空字符串，更新传索引文档id
      */
     private boolean createUpdateIndex(String documentId, HouseIndex index) {
+        // 分析索引数据并放入到索引的自动补全关键词列表
+        if (!analyzeSuggestion(index)) {
+            return false;
+        }
+
         // 构造索引请求，source不能是json串了应该传Map<String,Object>类型，而且通过opType限定操作类型
         DocWriteRequest.OpType opType = StringUtils.isBlank(documentId) ?
                 DocWriteRequest.OpType.CREATE : DocWriteRequest.OpType.INDEX;
         final Map<String, Object> map = gson.fromJson(gson.toJson(index), new TypeToken<Map<String, Object>>() {
         }.getType());
-        final var request = new IndexRequest(INDEX_NAME, INDEX_TYPE, documentId)
+        final var request = new IndexRequest(INDEX_NAME)
+                .id(documentId)
                 .source(map)
                 .opType(opType);
         log.debug(gson.toJson(map));
@@ -270,7 +285,7 @@ public class SearchServiceImpl implements SearchService {
      * 根据文档id删除文档
      */
     private boolean deleteIndexByDocumentId(String documentId) {
-        DeleteRequest request = new DeleteRequest(INDEX_NAME, INDEX_TYPE, documentId);
+        DeleteRequest request = new DeleteRequest(INDEX_NAME).id(documentId);
         try {
             final DeleteResponse response = rhlClient.delete(request, RequestOptions.DEFAULT);
             if (response.getResult() == DocWriteResponse.Result.DELETED) {
@@ -281,7 +296,7 @@ public class SearchServiceImpl implements SearchService {
             //处理成功的分片数少于总分片的情况
             if (shardInfo.getTotal() != shardInfo.getSuccessful()) {
                 log.warn("删除索引成功的分片数少于总分片，documentId = " + documentId);
-                return true;  //TODO 是否算成功？
+                return false;
             }
             //处理潜在的故障
             if (shardInfo.getFailed() > 0) {
@@ -395,11 +410,113 @@ public class SearchServiceImpl implements SearchService {
             final var houseIds = Arrays.stream(response.getHits().getHits()).map(hit ->
                     Integer.parseInt(String.valueOf(hit.getSourceAsMap().get(HouseIndexKey.HOUSE_ID)))
             ).collect(Collectors.toList());
-            return new MultiResultVo<>(response.getHits().totalHits, houseIds);
+            return new MultiResultVo<>(response.getHits().getTotalHits().value, houseIds);
         } catch (IOException e) {
             e.printStackTrace();
         }
-        return null;
+        return new MultiResultVo<>(0, List.of());
+    }
+
+    @Override
+    public ResultVo<List<String>> suggest(String prefix) {
+        //参照:https://www.elastic.co/guide/en/elasticsearch/reference/6.6/search-suggesters-completion.html
+        var completionSuggestion = SuggestBuilders.completionSuggestion(HouseIndexKey.suggestion)
+                .prefix(prefix)         //提供给suggest analyzer分析的需要补全的前缀
+                .size(5)                //每个建议文本项最多可返回的建议词个数，默认值是5
+                .skipDuplicates(false); //是否从结果中过滤掉来自不同文档的重复建议词，开启后会减慢搜索速度，因为需要遍历更多的建议词选出topN，下边已使用set去重
+        final var sourceBuilder = new SearchSourceBuilder().suggest(
+                new SuggestBuilder().addSuggestion("autocomplete", completionSuggestion)
+        );
+        var searchRequest = new SearchRequest(INDEX_NAME).source(sourceBuilder);
+        log.debug(searchRequest.toString());
+        try {
+            final SearchResponse response = rhlClient.search(searchRequest, RequestOptions.DEFAULT);
+            // 最终获取5个补全建议关键字结果（做去重处理）
+            final Set<String> suggestionSet = new HashSet<>();
+            response.getSuggest().getSuggestion("autocomplete")
+                    .getEntries()
+                    .stream()
+                    .filter(entry -> {
+                        if (entry instanceof CompletionSuggestion.Entry) {
+                            final CompletionSuggestion.Entry item = (CompletionSuggestion.Entry) entry;
+                            return !item.getOptions().isEmpty();
+                        }
+                        return false;
+                    }).map(entry ->
+                    ((CompletionSuggestion.Entry) entry).getOptions()
+            ).forEach(options -> {
+                if (suggestionSet.size() > maxSuggest) {
+                    return;
+                }
+                for (CompletionSuggestion.Entry.Option option : options) {
+                    if (suggestionSet.size() > maxSuggest) {
+                        break;
+                    }
+                    suggestionSet.add(option.getText().string());
+                }
+            });
+            List<String> suggestionList = Lists.newArrayList(suggestionSet.toArray(new String[0]));
+            return ResultVo.of(suggestionList);
+        } catch (IOException e) {
+            log.error("获取补全建议关键词失败", e);
+            return ResultVo.of(List.of());
+        }
+    }
+
+    /**
+     * 使用 ik_smart Tokenizer + TokenFilter 对索引数据进行词条分析(分词)，并把全部词条(term)加入到索引的 补全建议关键词 列表
+     * <p>
+     * 过滤器构造参照:https://www.elastic.co/guide/en/elasticsearch/client/java-rest/current/java-rest-high-analyze.html
+     * 过滤器类型参照:https://www.elastic.co/guide/en/elasticsearch/reference/current/analysis-tokenfilters.html
+     */
+    private boolean analyzeSuggestion(HouseIndex houseIndex) {
+        //构造数字类型term的过滤器，使分析返回的token不包含数字类型的term
+        final Map<String, Object> numericFilter = Map.of(
+                "type", "keep_types",
+                "types", new String[]{"<NUM>"},
+                "mode", "exclude"
+        );
+        //构造term长度过滤器，使分析返回的token长度>=2，这样补全提示才有意义
+        final Map<String, Object> lengthFilter = Map.of(
+                "type", "length",
+                "min", 2
+        );
+        // 用户输入的搜索词与这些域（底层存储的倒排索引词条）匹配
+        AnalyzeRequest analyzeReq = AnalyzeRequest
+                .buildCustomAnalyzer(IK_SMART)                  //使用的分词器
+                .addTokenFilter(numericFilter)                  //过滤器，we can change term or add/remove term
+                .addTokenFilter(lengthFilter)
+                .build(                                         //被分析的内容
+                        houseIndex.getTitle(),
+                        houseIndex.getLayoutDesc(),
+                        houseIndex.getRoundService(),
+                        houseIndex.getDescription(),
+                        houseIndex.getSubwayLineName(),
+                        houseIndex.getSubwayStationName()
+                );
+        log.debug(gson.toJson(analyzeReq));
+        try {
+            final var response = rhlClient.indices().analyze(analyzeReq, RequestOptions.DEFAULT);
+            // 获取词条分析结果 The token is the actual term that will be stored in the index
+            final var analyzeTokenList = response.getTokens();
+            if (CollectionUtils.isEmpty(analyzeTokenList)) {
+                log.warn("词条分析结果解析失败: houseId = " + houseIndex.getHouseId());
+                return false;
+            }
+            final var suggestList = analyzeTokenList.stream()
+                    .map(token -> new HouseSuggest(token.getTerm()))
+                    .collect(Collectors.toList());
+
+            // 非analyze字段的直接加入补全建议关键词列表，小区名...等
+            suggestList.add(new HouseSuggest(houseIndex.getDistrict()));
+
+            // 把补全建议关键词列表放入索引
+            houseIndex.setSuggest(suggestList);
+            return true;
+        } catch (IOException e) {
+            log.error("词条分析失败: houseId = " + houseIndex.getHouseId(), e);
+            return false;
+        }
     }
 
     /**

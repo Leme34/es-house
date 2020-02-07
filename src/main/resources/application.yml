@@ -44,8 +44,9 @@ qiniu:
 #ES
 eshouse:
   elasticsearch:
-    node-list: 192.168.101.6:9200
+    node-list: 192.168.101.10:9200
     max-retry: 3              #索引构建重试最大次数
+    max-suggest: 5            #补全建议关键词的最大数量
 
 logging:
   level:
