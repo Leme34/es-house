@@ -3,6 +3,7 @@ package com.lsd.eshouse.service;
 import com.lsd.eshouse.common.dto.HouseDTO;
 import com.lsd.eshouse.common.form.DatatableSearchForm;
 import com.lsd.eshouse.common.form.HouseForm;
+import com.lsd.eshouse.common.form.MapSearchForm;
 import com.lsd.eshouse.common.form.RentSearchForm;
 import com.lsd.eshouse.common.vo.MultiResultVo;
 import com.lsd.eshouse.common.vo.ResultVo;
@@ -41,4 +42,14 @@ public interface HouseService {
      * 查询房源信息
      */
     MultiResultVo<HouseDTO> query(RentSearchForm searchForm);
+
+    /**
+     * 地图查询整个城市的房源
+     */
+    MultiResultVo<HouseDTO> mapSearchByCity(MapSearchForm form);
+
+    /**
+     * 地图查询当前地图视野边界范围内的房源
+     */
+    MultiResultVo<HouseDTO> mapSearchByBound(MapSearchForm form);
 }

@@ -25,7 +25,7 @@ import java.util.Map;
 
 /**
  * 普通用户租房页面相关
- *
+ * <p>
  * Created by lsd
  * 2020-01-28 10:29
  */
@@ -118,7 +118,8 @@ public class RentController {
         model.addAttribute("agent", userDTOServiceResult.getResult());
         model.addAttribute("house", houseDTO);
         // 地区房源数量聚合信息
-        model.addAttribute("houseCountInDistrict", 0);
+        final ResultVo<Long> districtAggResult = searchService.aggregateDistrictHouse(city.getEnName(), region.getEnName(), houseDTO.getDistrict());
+        model.addAttribute("houseCountInDistrict", districtAggResult.getResult());
         return "house-detail";
     }
 

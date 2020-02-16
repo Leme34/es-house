@@ -1,4 +1,4 @@
-package com.lsd.eshouse.common.index;
+package com.lsd.eshouse.msg.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

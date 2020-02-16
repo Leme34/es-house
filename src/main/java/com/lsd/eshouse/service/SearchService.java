@@ -1,5 +1,7 @@
 package com.lsd.eshouse.service;
 
+import com.lsd.eshouse.common.dto.HouseBucketDTO;
+import com.lsd.eshouse.common.form.MapSearchForm;
 import com.lsd.eshouse.common.form.RentSearchForm;
 import com.lsd.eshouse.common.vo.MultiResultVo;
 import com.lsd.eshouse.common.vo.ResultVo;
@@ -51,4 +53,27 @@ public interface SearchService {
      * @param prefix 用户输入的内容
      */
     ResultVo<List<String>> suggest(String prefix);
+
+
+    /**
+     * 聚合特定小区的房源数
+     */
+    ResultVo<Long> aggregateDistrictHouse(String cityEnName, String regionEnName, String district);
+
+
+    /**
+     * 聚合地图页面该城市下每个地区的数据
+     * @param cityEnName 城市名称
+     */
+    MultiResultVo<HouseBucketDTO> mapAggregateByCity(String cityEnName);
+
+    /**
+     * 搜索出此城市的所有房源id
+     */
+    MultiResultVo<Integer> mapSearchByCity(MapSearchForm form);
+
+    /**
+     * 搜索出此边界范围的所有房源id
+     */
+    MultiResultVo<Integer> mapSearchByBound(MapSearchForm form);
 }

@@ -1,29 +1,37 @@
 package com.lsd.eshouse.service.impl;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Lists;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.lsd.eshouse.common.constant.RentValueRangeBlock;
+import com.lsd.eshouse.common.dto.BaiduMapLocation;
+import com.lsd.eshouse.common.dto.HouseBucketDTO;
 import com.lsd.eshouse.common.dto.HouseSuggest;
+import com.lsd.eshouse.common.form.MapSearchForm;
 import com.lsd.eshouse.common.form.RentSearchForm;
 import com.lsd.eshouse.common.index.HouseIndex;
 import com.lsd.eshouse.common.index.HouseIndexKey;
-import com.lsd.eshouse.common.index.HouseIndexMessage;
+import com.lsd.eshouse.entity.SupportAddress;
+import com.lsd.eshouse.msg.dto.HouseIndexMessage;
 import com.lsd.eshouse.common.utils.HouseSortUtil;
 import com.lsd.eshouse.common.vo.MultiResultVo;
 import com.lsd.eshouse.common.vo.ResultVo;
 import com.lsd.eshouse.entity.House;
 import com.lsd.eshouse.entity.HouseTag;
-import com.lsd.eshouse.msg.MessageListener;
+import com.lsd.eshouse.msg.listener.MessageListener;
 import com.lsd.eshouse.repository.HouseDetailRepository;
 import com.lsd.eshouse.repository.HouseRepository;
 import com.lsd.eshouse.repository.HouseTagRepository;
+import com.lsd.eshouse.repository.SupportAddressRepository;
+import com.lsd.eshouse.service.AddressService;
+import com.lsd.eshouse.service.BaiduLBSService;
 import com.lsd.eshouse.service.SearchService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.methods.HttpPut;
 import org.apache.http.util.EntityUtils;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.DocWriteRequest;
@@ -37,12 +45,13 @@ import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.support.replication.ReplicationResponse;
 import org.elasticsearch.client.*;
 import org.elasticsearch.client.indices.AnalyzeRequest;
-import org.elasticsearch.index.query.BoolQueryBuilder;
-import org.elasticsearch.index.query.MultiMatchQueryBuilder;
-import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.index.query.TermQueryBuilder;
+import org.elasticsearch.common.geo.GeoPoint;
+import org.elasticsearch.index.query.*;
 import org.elasticsearch.index.reindex.DeleteByQueryRequest;
 import org.elasticsearch.rest.RestStatus;
+import org.elasticsearch.search.aggregations.AggregationBuilders;
+import org.elasticsearch.search.aggregations.Aggregations;
+import org.elasticsearch.search.aggregations.bucket.terms.Terms;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.sort.SortOrder;
 import org.elasticsearch.search.suggest.SuggestBuilder;
@@ -77,6 +86,10 @@ public class SearchServiceImpl implements SearchService {
     @Autowired
     private HouseTagRepository houseTagRepository;
     @Autowired
+    private SupportAddressRepository supportAddressRepository;
+    @Autowired
+    private AddressService addressService;
+    @Autowired
     private ModelMapper modelMapper;
     @Autowired
     private RestClient restClient;
@@ -85,7 +98,11 @@ public class SearchServiceImpl implements SearchService {
     @Autowired
     private Gson gson;
     @Autowired
+    private ObjectMapper objectMapper;
+    @Autowired
     private KafkaTemplate<String, String> kafkaTemplate;
+    @Autowired
+    private BaiduLBSService baiduLBSService;
     @Value("${eshouse.elasticsearch.max-retry:3}")
     private Integer maxReTry;
     @Value("${eshouse.elasticsearch.max-suggest:5}")
@@ -101,6 +118,7 @@ public class SearchServiceImpl implements SearchService {
             retryIndex(houseId, retry + 1, "房源不存在");
             return;
         }
+        final House house = houseOpt.get();
         // 查询house detail
         final var houseDetail = houseDetailRepository.findByHouseId(houseId);
         if (houseDetail == null) {
@@ -108,41 +126,54 @@ public class SearchServiceImpl implements SearchService {
             retryIndex(houseId, retry + 1, "房源详细信息不存在");
             return;
         }
+        // 查询house地址信息，并调用百度地图API获取地址的经纬度
+        SupportAddress city = supportAddressRepository.findByEnNameAndLevel(house.getCityEnName(), SupportAddress.Level.CITY.getValue());
+        SupportAddress region = supportAddressRepository.findByEnNameAndLevel(house.getRegionEnName(), SupportAddress.Level.REGION.getValue());
+        String address = city.getCnName() + region.getCnName() + house.getStreet() + house.getDistrict() + houseDetail.getAddress();
+        ResultVo<BaiduMapLocation> locationResultVo = addressService.getBaiduMapLocation(city.getCnName(), address);
+        if (!locationResultVo.isSuccess()) {
+            retryIndex(houseId, retry + 1, "查询house地址信息失败");
+            return;
+        }
         // 查询house tags
         List<HouseTag> houseTags = houseTagRepository.findAllByHouseId(houseId);
         // 构建索引对象
-        HouseIndex houseIndex = modelMapper.map(houseOpt.get(), HouseIndex.class);
+        HouseIndex houseIndex = modelMapper.map(house, HouseIndex.class);
         modelMapper.map(houseDetail, houseIndex);
         if (!CollectionUtils.isEmpty(houseTags)) {
             houseIndex.setTags(houseTags.stream().map(HouseTag::getName).collect(Collectors.toList()));
         }
+        houseIndex.setLocation(locationResultVo.getResult());
         houseIndex.setHouseId(houseId);
 
         // 索引前先term查询索引是否存在
         var sourceBuilder = new SearchSourceBuilder().query(QueryBuilders.termQuery(HouseIndexKey.HOUSE_ID, houseId));
         var searchRequest = new SearchRequest(INDEX_NAME).source(sourceBuilder);
-        boolean success = false;
+        boolean indexSuccess = false;
         try {
             final var response = rhlClient.search(searchRequest, RequestOptions.DEFAULT);
             final var totalHits = response.getHits().getTotalHits().value;
             // 索引不存在，则创建索引
             if (totalHits == 0) {
-                success = this.createIndex(houseIndex);
+                indexSuccess = this.createIndex(houseIndex);
             } else if (totalHits == 1) {  //已存在则更新索引
                 var documentId = response.getHits().getAt(0).getId();
-                success = this.createUpdateIndex(documentId, houseIndex);
+                indexSuccess = this.createUpdateIndex(documentId, houseIndex);
             } else {  //其他情况先删除再新增索引
-                success = deleteAndCreateIndex(houseIndex);
+                indexSuccess = deleteAndCreateIndex(houseIndex);
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("房源索引失败，houseId = " + houseId, e);
         }
-        if (success) {
-            log.debug("房源索引成功，houseId = " + houseId);
+        // 上传百度地图LBS.云的POI数据
+        var uploadLBSResult = baiduLBSService.upload(locationResultVo.getResult(), house.getStreet() + house.getDistrict(), city.getCnName() + region.getCnName() + house.getStreet() + house.getDistrict(), houseId, house.getPrice(), house.getArea());
+        // 两者都成功才算成功
+        if (indexSuccess && uploadLBSResult.isSuccess()) {
+            log.debug("房源索引成功 && POI数据上传成功，houseId = " + houseId);
             return;
         }
         // 发消息进行重试，消息重试次数+1
-        retryIndex(houseId, retry + 1, "索引操作失败");
+        retryIndex(houseId, retry + 1, "索引操作失败或POI数据上传失败");
     }
 
     /**
@@ -162,7 +193,7 @@ public class SearchServiceImpl implements SearchService {
                 log.warn("已删除的数目 < 需要删除的数目，需要删除的数目：{}，已删除的数目：{}", totalHits, deletedDocs);
                 return false;
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("删除索引出错，houseId = " + houseId, e);
             return false;
         }
@@ -221,8 +252,9 @@ public class SearchServiceImpl implements SearchService {
         }
         try {
             final Request request = new Request(HttpPost.METHOD_NAME, "/" + INDEX_NAME + "/_doc");
-            request.setJsonEntity(gson.toJson(index));
-            log.debug(gson.toJson(index));
+            final String indexJson = objectMapper.writeValueAsString(index);
+            request.setJsonEntity(indexJson);
+            log.debug(indexJson);
             Response response = restClient.performRequest(request);
             // 是否创建成功
             final int statusCode = response.getStatusLine().getStatusCode();
@@ -230,8 +262,8 @@ public class SearchServiceImpl implements SearchService {
                 return true;
             }
             // 记录失败信息
-            log.error("创建房源索引失败，houseId = " + index.getHouseId() + ",返回体：{}", EntityUtils.toString(response.getEntity()));
-        } catch (IOException e) {
+            log.error("houseId = " + index.getHouseId() + ",返回体：{}", EntityUtils.toString(response.getEntity()));
+        } catch (Exception e) {
             log.error("创建房源索引失败，houseId = " + index.getHouseId(), e);
         }
         return false;
@@ -247,17 +279,23 @@ public class SearchServiceImpl implements SearchService {
         if (!analyzeSuggestion(index)) {
             return false;
         }
-
         // 构造索引请求，source不能是json串了应该传Map<String,Object>类型，而且通过opType限定操作类型
         DocWriteRequest.OpType opType = StringUtils.isBlank(documentId) ?
                 DocWriteRequest.OpType.CREATE : DocWriteRequest.OpType.INDEX;
-        final Map<String, Object> map = gson.fromJson(gson.toJson(index), new TypeToken<Map<String, Object>>() {
-        }.getType());
+
+        Map<String, Object> map;
+        try {
+            map = objectMapper.readValue(objectMapper.writeValueAsString(index), new TypeReference<Map<String, Object>>() {
+            });
+        } catch (Exception e) {
+            log.error("更新房源索引出错，序列化错误，houseId = " + index.getHouseId(), e);
+            return false;
+        }
         final var request = new IndexRequest(INDEX_NAME)
                 .id(documentId)
                 .source(map)
                 .opType(opType);
-        log.debug(gson.toJson(map));
+        log.debug(request.toString());
         try {
             IndexResponse response = rhlClient.index(request, RequestOptions.DEFAULT);
             //处理首次创建文档的情况
@@ -274,8 +312,10 @@ public class SearchServiceImpl implements SearchService {
             //表示是由于返回了版本冲突错误引发的异常
             if (e.status() == RestStatus.CONFLICT) {
                 log.error("更新房源索引出错，houseId = " + index.getHouseId() + "，原因：版本冲突错误，请检查是否opType设置错误", e);
+            } else {
+                log.error("更新房源索引出错，houseId = " + index.getHouseId(), e);
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("更新房源索引出错，houseId = " + index.getHouseId(), e);
         }
         return false;
@@ -310,8 +350,10 @@ public class SearchServiceImpl implements SearchService {
                 return true;
             } else if (e.status() == RestStatus.CONFLICT) { //表示是由于返回了版本冲突错误引发的异常
                 log.error("删除索引出错，documentId = " + documentId + "，原因：版本冲突错误", e);
+            } else {
+                log.error("删除索引出错，documentId = " + documentId, e);
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("删除索引出错，documentId = " + documentId, e);
         }
         return false;
@@ -332,8 +374,14 @@ public class SearchServiceImpl implements SearchService {
                 log.warn("已删除的数目 < 需要删除的数目，需要删除的数目：{}，已删除的数目：{}", totalHits, deletedDocs);
                 retryRemoveIndex(houseId, retry + 1);
             }
-            log.debug("删除索引成功，houseId = " + houseId);
-        } catch (IOException e) {
+            // 删除百度地图LBS.云的POI数据
+            final ResultVo removeLBSResult = baiduLBSService.remove(houseId);
+            if (!removeLBSResult.isSuccess()) {
+                log.warn("删除百度地图LBS.云的POI数据失败");
+                retryRemoveIndex(houseId, retry + 1);
+            }
+            log.debug("删除索引成功  && POI数据删除成功 ，houseId = " + houseId);
+        } catch (Exception e) {
             log.error("删除索引出错，houseId = " + houseId, e);
         }
     }
@@ -344,16 +392,20 @@ public class SearchServiceImpl implements SearchService {
     }
 
     @Override
-    public MultiResultVo<Integer> search(RentSearchForm searchForm) {
+    public MultiResultVo<Integer> search(RentSearchForm form) {
         // 城市、地区等筛选栏使用filterQuery
-        final var boolQB = new BoolQueryBuilder().filter(new TermQueryBuilder(HouseIndexKey.CITY_EN_NAME, searchForm.getCityEnName()));
-        final String regionEnName = searchForm.getRegionEnName();
+        final var boolQB = new BoolQueryBuilder().filter(new TermQueryBuilder(HouseIndexKey.CITY_EN_NAME, form.getCityEnName()));
+        final String regionEnName = form.getRegionEnName();
         if (StringUtils.isNotBlank(regionEnName) && !StringUtils.equals(regionEnName, "*")) {
             boolQB.filter(new TermQueryBuilder(HouseIndexKey.REGION_EN_NAME, regionEnName));
         }
         // keywords使用multiQuery
-        boolQB.must(
-                new MultiMatchQueryBuilder(searchForm.getKeywords(),
+        // 设置每个域的评分权重
+        boolQB.should(
+                QueryBuilders.matchQuery(HouseIndexKey.TITLE, form.getKeywords())
+                        .boost(2.0f)
+        ).should(
+                QueryBuilders.multiMatchQuery(form.getKeywords(),
                         HouseIndexKey.TITLE,
                         HouseIndexKey.TRAFFIC,
                         HouseIndexKey.DISTRICT,
@@ -362,8 +414,8 @@ public class SearchServiceImpl implements SearchService {
                         HouseIndexKey.SUBWAY_STATION_NAME)
         );
         // 面积、租金使用rangeQuery
-        final var areaRange = RentValueRangeBlock.matchArea(searchForm.getAreaBlock());
-        final var priceRange = RentValueRangeBlock.matchPrice(searchForm.getPriceBlock());
+        final var areaRange = RentValueRangeBlock.matchArea(form.getAreaBlock());
+        final var priceRange = RentValueRangeBlock.matchPrice(form.getPriceBlock());
         if (!RentValueRangeBlock.ALL.equals(areaRange)) {
             final var rangeQB = QueryBuilders.rangeQuery(HouseIndexKey.AREA);
             if (areaRange.getMin() > 0) {
@@ -384,35 +436,45 @@ public class SearchServiceImpl implements SearchService {
             }
             boolQB.filter(rangeQB);
         }
-
         //朝向
-        if (searchForm.getDirection() > 0) {
-            boolQB.filter(QueryBuilders.termQuery(HouseIndexKey.DIRECTION, searchForm.getDirection()));
+        if (form.getDirection() > 0) {
+            boolQB.filter(QueryBuilders.termQuery(HouseIndexKey.DIRECTION, form.getDirection()));
         }
         //租赁方式
-        if (searchForm.getRentWay() > -1) {
-            boolQB.filter(QueryBuilders.termQuery(HouseIndexKey.RENT_WAY, searchForm.getRentWay()));
+        if (form.getRentWay() > -1) {
+            boolQB.filter(QueryBuilders.termQuery(HouseIndexKey.RENT_WAY, form.getRentWay()));
         }
-        //搜索
+        //执行搜索
+        return this.searchForHouseIds(form.getStart(), form.getSize(), form.getOrderBy(), form.getOrderDirection(), boolQB);
+    }
+
+    /**
+     * 搜索房源ids
+     *
+     * @param boolQB 构造好的 BoolQueryBuilder
+     * @return 条件匹配的房源ids
+     */
+    private MultiResultVo<Integer> searchForHouseIds(int start, int size, String orderBy, String orderDirection, BoolQueryBuilder boolQB) {
         final var sourceBuilder = new SearchSourceBuilder()
                 .query(boolQB)
-                .sort(HouseSortUtil.getSortKey(searchForm.getOrderBy()), SortOrder.fromString(searchForm.getOrderDirection()))
-                .from(searchForm.getStart())
-                .size(searchForm.getSize());
+                .fetchSource(HouseIndexKey.HOUSE_ID, null)  //只查出houseId，避免其他无用数据浪费性能
+                .sort(HouseSortUtil.getSortKey(orderBy), SortOrder.fromString(orderDirection))
+                .from(start)
+                .size(size);
         final var searchRequest = new SearchRequest(INDEX_NAME).source(sourceBuilder);
-        log.debug(sourceBuilder.toString());
+        log.debug(searchRequest.toString());
         try {
             final var response = rhlClient.search(searchRequest, RequestOptions.DEFAULT);
             if (response.status() != RestStatus.OK) {
-                log.warn("查询失败，searchRequest = {}", searchRequest.toString());
+                log.error("搜索查询失败，searchRequest = {}", searchRequest.toString());
                 return new MultiResultVo<>(0, List.of());
             }
             final var houseIds = Arrays.stream(response.getHits().getHits()).map(hit ->
                     Integer.parseInt(String.valueOf(hit.getSourceAsMap().get(HouseIndexKey.HOUSE_ID)))
             ).collect(Collectors.toList());
             return new MultiResultVo<>(response.getHits().getTotalHits().value, houseIds);
-        } catch (IOException e) {
-            e.printStackTrace();
+        } catch (Exception e) {
+            log.error("搜索查询失败", e);
         }
         return new MultiResultVo<>(0, List.of());
     }
@@ -420,7 +482,7 @@ public class SearchServiceImpl implements SearchService {
     @Override
     public ResultVo<List<String>> suggest(String prefix) {
         //参照:https://www.elastic.co/guide/en/elasticsearch/reference/6.6/search-suggesters-completion.html
-        var completionSuggestion = SuggestBuilders.completionSuggestion(HouseIndexKey.suggestion)
+        var completionSuggestion = SuggestBuilders.completionSuggestion(HouseIndexKey.SUGGESTION)
                 .prefix(prefix)         //提供给suggest analyzer分析的需要补全的前缀
                 .size(5)                //每个建议文本项最多可返回的建议词个数，默认值是5
                 .skipDuplicates(false); //是否从结果中过滤掉来自不同文档的重复建议词，开启后会减慢搜索速度，因为需要遍历更多的建议词选出topN，下边已使用set去重
@@ -436,13 +498,9 @@ public class SearchServiceImpl implements SearchService {
             response.getSuggest().getSuggestion("autocomplete")
                     .getEntries()
                     .stream()
-                    .filter(entry -> {
-                        if (entry instanceof CompletionSuggestion.Entry) {
-                            final CompletionSuggestion.Entry item = (CompletionSuggestion.Entry) entry;
-                            return !item.getOptions().isEmpty();
-                        }
-                        return false;
-                    }).map(entry ->
+                    .filter(entry ->
+                            entry instanceof CompletionSuggestion.Entry && !entry.getOptions().isEmpty()
+                    ).map(entry ->
                     ((CompletionSuggestion.Entry) entry).getOptions()
             ).forEach(options -> {
                 if (suggestionSet.size() > maxSuggest) {
@@ -457,10 +515,98 @@ public class SearchServiceImpl implements SearchService {
             });
             List<String> suggestionList = Lists.newArrayList(suggestionSet.toArray(new String[0]));
             return ResultVo.of(suggestionList);
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("获取补全建议关键词失败", e);
             return ResultVo.of(List.of());
         }
+    }
+
+    @Override
+    public ResultVo<Long> aggregateDistrictHouse(String cityEnName, String regionEnName, String district) {
+        var boolQuery = QueryBuilders.boolQuery()
+                .filter(QueryBuilders.termQuery(HouseIndexKey.CITY_EN_NAME, cityEnName))
+                .filter(QueryBuilders.termQuery(HouseIndexKey.REGION_EN_NAME, regionEnName))
+                .filter(QueryBuilders.termQuery(HouseIndexKey.DISTRICT, district));
+        // 先boolQuery再根据小区名进行aggregation
+        // the terms aggregation will return the buckets for the top ten terms ordered by the doc_count.
+        // One can change this default behaviour by setting the size parameter.
+        var sourceBuilder = new SearchSourceBuilder()
+                .query(boolQuery)
+                .aggregation(
+                        AggregationBuilders.terms(HouseIndexKey.AGG_DISTRICT)
+                                .field(HouseIndexKey.DISTRICT)
+                );
+        SearchRequest searchReq = new SearchRequest().source(sourceBuilder);
+        log.debug(searchReq.toString());
+        try {
+            final var response = rhlClient.search(searchReq, RequestOptions.DEFAULT);
+            if (response.status() != RestStatus.OK) {
+                log.error("聚合特定小区的房源数查询失败，searchRequest = {}", searchReq.toString());
+                return ResultVo.of(0L);
+            }
+            Aggregations aggregations = response.getAggregations();
+            // the list of the top buckets, the meaning of top being defined by the order
+            Terms buckets = aggregations.get(HouseIndexKey.AGG_DISTRICT);
+            // 获取当前小区的桶的文档数量
+            Long docCount = Optional.ofNullable(buckets.getBucketByKey(district))
+                    .map(Terms.Bucket::getDocCount)
+                    .orElse(0L);
+            return ResultVo.of(docCount);
+        } catch (Exception e) {
+            log.error("聚合特定小区的房源数查询失败", e);
+        }
+        return ResultVo.of(0L);
+    }
+
+    @Override
+    public MultiResultVo<HouseBucketDTO> mapAggregateByCity(String cityEnName) {
+        // 先根据城市filter
+        var queryBuilder = QueryBuilders.boolQuery()
+                .filter(QueryBuilders.termQuery(HouseIndexKey.CITY_EN_NAME, cityEnName));
+        var sourceBuilder = new SearchSourceBuilder()
+                .query(queryBuilder)
+                .aggregation(
+                        AggregationBuilders.terms(HouseIndexKey.AGG_REGION)     //聚合名称
+                                .field(HouseIndexKey.REGION_EN_NAME)            //根据地区聚合
+                );
+        var searchReq = new SearchRequest(INDEX_NAME).source(sourceBuilder);
+        log.debug(searchReq.toString());
+        try {
+            final var response = rhlClient.search(searchReq, RequestOptions.DEFAULT);
+            if (response.status() != RestStatus.OK) {
+                log.error("地图页面城市信息聚合失败,searchRequest = {}", searchReq.toString());
+                return new MultiResultVo<>(0, List.of());
+            }
+            // 聚合信息转为DTO返回
+            Terms terms = response.getAggregations().get(HouseIndexKey.AGG_REGION);
+            List<HouseBucketDTO> bucketDTOList = terms.getBuckets().stream().map(buck ->
+                    new HouseBucketDTO(buck.getKeyAsString(), buck.getDocCount())
+            ).collect(Collectors.toList());
+            return new MultiResultVo<>(response.getHits().getTotalHits().value, bucketDTOList);
+        } catch (Exception e) {
+            log.error("地图页面城市信息聚合失败", e);
+            return new MultiResultVo<>(0, List.of());
+        }
+    }
+
+    @Override
+    public MultiResultVo<Integer> mapSearchByCity(MapSearchForm form) {
+        var boolQB = QueryBuilders.boolQuery().filter(QueryBuilders.termQuery(HouseIndexKey.CITY_EN_NAME, form.getCityEnName()));
+        return this.searchForHouseIds(form.getStart(), form.getSize(), form.getOrderBy(), form.getOrderDirection(), boolQB);
+    }
+
+    @Override
+    public MultiResultVo<Integer> mapSearchByBound(MapSearchForm form) {
+        // 根据精确范围经纬度搜索
+        var boundingBoxQB = QueryBuilders.geoBoundingBoxQuery(HouseIndexKey.LOCATION)
+                .setCorners(
+                        new GeoPoint(form.getLeftLatitude(), form.getLeftLongitude()),
+                        new GeoPoint(form.getRightLatitude(), form.getRightLongitude())
+                );
+        var boolQB = QueryBuilders.boolQuery()
+                .filter(QueryBuilders.termQuery(HouseIndexKey.CITY_EN_NAME, form.getCityEnName()))
+                .filter(boundingBoxQB);
+        return this.searchForHouseIds(form.getStart(), form.getSize(), form.getOrderBy(), form.getOrderDirection(), boolQB);
     }
 
     /**
@@ -513,7 +659,7 @@ public class SearchServiceImpl implements SearchService {
             // 把补全建议关键词列表放入索引
             houseIndex.setSuggest(suggestList);
             return true;
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("词条分析失败: houseId = " + houseIndex.getHouseId(), e);
             return false;
         }

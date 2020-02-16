@@ -1,16 +1,14 @@
-package com.lsd.eshouse.msg;
+package com.lsd.eshouse.msg.listener;
 
 import com.google.gson.Gson;
-import com.lsd.eshouse.common.index.HouseIndexMessage;
+import com.lsd.eshouse.msg.dto.HouseIndexMessage;
 import com.lsd.eshouse.service.SearchService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
-import java.math.BigDecimal;
-
-import static com.lsd.eshouse.common.index.HouseIndexMessage.IndexOperation;
+import static com.lsd.eshouse.msg.dto.HouseIndexMessage.IndexOperation;
 
 /**
  * Created by lsd

@@ -67,13 +67,13 @@ public class SupportAddress implements Serializable {
      * 百度地图经度
      */
     @Column(name = "baidu_map_lng", nullable = false)
-    private Double baiduMapLng;
+    private Double baiduMapLongitude;
 
     /**
      * 百度地图纬度
      */
     @Column(name = "baidu_map_lat", nullable = false)
-    private Double baiduMapLat;
+    private Double baiduMapLatitude;
 
 
 }

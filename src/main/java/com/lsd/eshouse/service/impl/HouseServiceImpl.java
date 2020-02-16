@@ -1,16 +1,13 @@
 package com.lsd.eshouse.service.impl;
 
 import com.lsd.eshouse.common.constant.HouseStatus;
-import com.lsd.eshouse.common.form.RentSearchForm;
+import com.lsd.eshouse.common.form.*;
 import com.lsd.eshouse.common.utils.HouseSortUtil;
 import com.lsd.eshouse.config.qiniu.QiNiuProperties;
 import com.lsd.eshouse.common.dto.HouseDTO;
 import com.lsd.eshouse.common.dto.HouseDetailDTO;
 import com.lsd.eshouse.common.dto.HousePictureDTO;
 import com.lsd.eshouse.entity.*;
-import com.lsd.eshouse.common.form.DatatableSearchForm;
-import com.lsd.eshouse.common.form.HouseForm;
-import com.lsd.eshouse.common.form.PhotoForm;
 import com.lsd.eshouse.repository.*;
 import com.lsd.eshouse.service.HouseService;
 import com.lsd.eshouse.common.utils.LoginUserUtil;
@@ -22,7 +19,6 @@ import com.qiniu.common.QiniuException;
 import com.qiniu.http.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.modelmapper.ModelMapper;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -290,20 +286,48 @@ public class HouseServiceImpl implements HouseService {
         return queryPage(searchForm);
     }
 
+    @Override
+    public MultiResultVo<HouseDTO> mapSearchByCity(MapSearchForm form) {
+        // 搜索出此城市的所有房源id
+        MultiResultVo<Integer> houseIdsResult = searchService.mapSearchByCity(form);
+        if (houseIdsResult.getTotal() == 0) {
+            return new MultiResultVo<>(0, List.of());
+        }
+        // 用索引出的id查询数据库
+        var houseList = houseRepository.findAllById(houseIdsResult.getResult());
+        // 查询并填充houseDetail信息
+        final var houseDTOList = wrapperHouseDTOListInfo(houseList);
+        return new MultiResultVo<>(houseIdsResult.getTotal(), houseDTOList);
+    }
+
+    @Override
+    public MultiResultVo<HouseDTO> mapSearchByBound(MapSearchForm form) {
+        // 搜索出此边界范围的所有房源id
+        MultiResultVo<Integer> houseIdsResult = searchService.mapSearchByBound(form);
+        if (houseIdsResult.getTotal() == 0) {
+            return new MultiResultVo<>(0, List.of());
+        }
+        // 用索引出的id查询数据库
+        var houseList = houseRepository.findAllById(houseIdsResult.getResult());
+        // 查询并填充houseDetail信息
+        final var houseDTOList = wrapperHouseDTOListInfo(houseList);
+        return new MultiResultVo<>(houseIdsResult.getTotal(), houseDTOList);
+    }
+
     /**
      * 先根据关键词索引出匹配的房源id，再去数据库查询
      */
     private MultiResultVo<HouseDTO> queryIndex(RentSearchForm searchForm) {
-        final var searchResult = searchService.search(searchForm);
+        final var houseIdsResult = searchService.search(searchForm);
         // 若没有索引匹配的结果返回空
-        if (searchResult.getTotal() == 0) {
+        if (houseIdsResult.getTotal() == 0) {
             return new MultiResultVo<>(0, List.of());
         }
         // 用索引出的id查询数据库
-        var houseList = houseRepository.findAllById(searchResult.getResult());
+        var houseList = houseRepository.findAllById(houseIdsResult.getResult());
         // 查询并填充houseDetail信息
         final var houseDTOList = wrapperHouseDTOListInfo(houseList);
-        return new MultiResultVo<>(searchResult.getTotal(), houseDTOList);
+        return new MultiResultVo<>(houseIdsResult.getTotal(), houseDTOList);
     }
 
     /**

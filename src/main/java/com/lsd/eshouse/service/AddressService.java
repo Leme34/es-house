@@ -1,5 +1,6 @@
 package com.lsd.eshouse.service;
 
+import com.lsd.eshouse.common.dto.BaiduMapLocation;
 import com.lsd.eshouse.common.dto.SubwayDTO;
 import com.lsd.eshouse.common.dto.SubwayStationDTO;
 import com.lsd.eshouse.common.dto.SupportAddressDTO;
@@ -57,5 +58,11 @@ public interface AddressService {
      * 根据城市英文简写获取城市详细信息
      */
     ResultVo<SupportAddressDTO> findCity(String cityEnName);
+
+
+    /**
+     * 请求百度API，根据城市以及具体位置获取百度地图的经纬度
+     */
+    ResultVo<BaiduMapLocation> getBaiduMapLocation(String city, String address);
 
 }

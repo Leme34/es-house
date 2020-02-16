@@ -1,8 +1,12 @@
 package com.lsd.eshouse.service.impl;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.lsd.eshouse.common.dto.BaiduMapLocation;
 import com.lsd.eshouse.common.dto.SubwayDTO;
 import com.lsd.eshouse.common.dto.SubwayStationDTO;
 import com.lsd.eshouse.common.dto.SupportAddressDTO;
+import com.lsd.eshouse.config.baidu_map.BaiduMapProperties;
 import com.lsd.eshouse.entity.Subway;
 import com.lsd.eshouse.entity.SubwayStation;
 import com.lsd.eshouse.entity.SupportAddress;
@@ -12,10 +16,19 @@ import com.lsd.eshouse.repository.SupportAddressRepository;
 import com.lsd.eshouse.service.AddressService;
 import com.lsd.eshouse.common.vo.MultiResultVo;
 import com.lsd.eshouse.common.vo.ResultVo;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.util.EntityUtils;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -26,6 +39,7 @@ import java.util.stream.Collectors;
  * Created by lsd
  * 2020-01-26 09:32
  */
+@Slf4j
 @Service
 public class AddressServiceImpl implements AddressService {
 
@@ -37,6 +51,12 @@ public class AddressServiceImpl implements AddressService {
     private SubwayStationRepository subwayStationRepository;
     @Autowired
     private SubwayRepository subwayRepository;
+    @Autowired
+    private HttpClient httpClient;
+    @Autowired
+    private BaiduMapProperties baiduMapProperties;
+    @Autowired
+    private Gson gson;
 
     @Override
     public MultiResultVo<SupportAddressDTO> findAllCities() {
@@ -46,7 +66,7 @@ public class AddressServiceImpl implements AddressService {
         var addressDTOList = addresses.stream()
                 .map(addr -> modelMapper.map(addr, SupportAddressDTO.class))
                 .collect(Collectors.toList());
-        return new MultiResultVo<>(addressDTOList.size(),addressDTOList);
+        return new MultiResultVo<>(addressDTOList.size(), addressDTOList);
     }
 
 
@@ -132,14 +152,42 @@ public class AddressServiceImpl implements AddressService {
         if (cityEnName == null) {
             return ResultVo.notFound();
         }
-
         SupportAddress supportAddress = supportAddressRepository.findByEnNameAndLevel(cityEnName, SupportAddress.Level.CITY.getValue());
         if (supportAddress == null) {
             return ResultVo.notFound();
         }
-
         SupportAddressDTO addressDTO = modelMapper.map(supportAddress, SupportAddressDTO.class);
         return ResultVo.of(addressDTO);
+    }
+
+    @Override
+    public ResultVo<BaiduMapLocation> getBaiduMapLocation(String city, String address) {
+        // 把要传的请求参数编码
+        String encodeCity = URLEncoder.encode(city, StandardCharsets.UTF_8);
+        String encodeAddress = URLEncoder.encode(address, StandardCharsets.UTF_8);
+        String url = String.format("%s?address=%s&city=%s&output=json&ak=%s",
+                baiduMapProperties.getGeocoderApiPrefix(), encodeAddress, encodeCity, baiduMapProperties.getApiKey());
+        // 发起Http请求调用百度地图API
+        try {
+            final HttpResponse response = httpClient.execute(new HttpGet(url));
+            if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
+                return new ResultVo<>(false, "百度地图地理编码服务Web API接口调用失败");
+            }
+            String resultStr = EntityUtils.toString(response.getEntity(), "UTF-8");
+            // 解析为json结构
+            JsonObject resultJson = gson.fromJson(resultStr, JsonObject.class);
+            int status = resultJson.get("status").getAsInt();
+            if (status != 0) {
+                return new ResultVo<>(false, "百度地图地理编码服务地址解析错误，status = " + status);
+            }
+            JsonObject locationJson = resultJson.getAsJsonObject("result").getAsJsonObject("location");
+            BaiduMapLocation location = new BaiduMapLocation(locationJson.get("lng").getAsDouble(),
+                    locationJson.get("lat").getAsDouble());
+            return ResultVo.of(location);
+        } catch (IOException e) {
+            log.error("百度地图地理编码服务Web API接口调用失败", e);
+            return new ResultVo<>(false, "百度地图地理编码服务Web API接口调用失败");
+        }
     }
 
 }

@@ -12,13 +12,14 @@ import lombok.NoArgsConstructor;
  * 2020-01-23 10:05
  */
 @NoArgsConstructor
-@AllArgsConstructor
 @Data
 public class R {
 
     private int code;
     private String message;
     private Object data;
+    // 是否还有更多数据
+    private boolean more;
 
     @Getter
     @AllArgsConstructor
@@ -33,6 +34,12 @@ public class R {
 
         private int code;
         private String message;
+    }
+
+    public R(int code, String message, Object data) {
+        this.code = code;
+        this.message = message;
+        this.data = data;
     }
 
     public static R ok() {

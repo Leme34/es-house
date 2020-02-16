@@ -1,5 +1,6 @@
 package com.lsd.eshouse.common.index;
 
+import com.lsd.eshouse.common.dto.BaiduMapLocation;
 import com.lsd.eshouse.common.dto.HouseSuggest;
 import lombok.Data;
 
@@ -54,5 +55,8 @@ public class HouseIndex {
 
     // 索引中存储的自动补全关键词列表
     private List<HouseSuggest> suggest;
+
+    // 百度地图经纬度
+    private BaiduMapLocation location;
 
 }
