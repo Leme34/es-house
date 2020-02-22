@@ -53,11 +53,11 @@ baidu-map:
   apiKey: ***
   geocoderApiPrefix: http://api.map.baidu.com/geocoding/v3/
   poi:
-    geotableId: 1000006902
-    createUrl: http://api.map.baidu.com/geodata/v4/poi/create
-    queryUrl: http://api.map.baidu.com/geodata/v4/poi/list
-    updateUrl: http://api.map.baidu.com/geodata/v4/poi/update
-    deleteUrl: http://api.map.baidu.com/geodata/v4/poi/delete
+    geotableId: 209006
+    createUrl: http://api.map.baidu.com/geodata/v3/poi/create
+    queryUrl: http://api.map.baidu.com/geodata/v3/poi/list
+    updateUrl: http://api.map.baidu.com/geodata/v3/poi/update
+    deleteUrl: http://api.map.baidu.com/geodata/v3/poi/delete
 
 logging:
   level:

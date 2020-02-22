@@ -1,6 +1,8 @@
 package com.lsd.eshouse.service.impl;
 
 import com.lsd.eshouse.common.constant.HouseStatus;
+import com.lsd.eshouse.common.constant.HouseSubscribeStatus;
+import com.lsd.eshouse.common.dto.HouseSubscribeDTO;
 import com.lsd.eshouse.common.form.*;
 import com.lsd.eshouse.common.utils.HouseSortUtil;
 import com.lsd.eshouse.config.qiniu.QiNiuProperties;
@@ -19,20 +21,19 @@ import com.qiniu.common.QiniuException;
 import com.qiniu.http.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.modelmapper.ModelMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.util.Pair;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.persistence.criteria.Predicate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -52,8 +53,9 @@ public class HouseServiceImpl implements HouseService {
     private final QiNiuProperties qiNiuProperties;
     private final QiNiuService qiNiuService;
     private final SearchService searchService;
+    private final HouseSubscribeRepository houseSubscribeRepository;
 
-    public HouseServiceImpl(ModelMapper modelMapper, HouseRepository houseRepository, HouseDetailRepository houseDetailRepository, SubwayStationRepository subwayStationRepository, SubwayRepository subwayRepository, HousePictureRepository housePictureRepository, HouseTagRepository houseTagRepository, QiNiuProperties qiNiuProperties, QiNiuService qiNiuService, SearchService searchService) {
+    public HouseServiceImpl(ModelMapper modelMapper, HouseRepository houseRepository, HouseDetailRepository houseDetailRepository, SubwayStationRepository subwayStationRepository, SubwayRepository subwayRepository, HousePictureRepository housePictureRepository, HouseTagRepository houseTagRepository, QiNiuProperties qiNiuProperties, QiNiuService qiNiuService, SearchService searchService, HouseSubscribeRepository houseSubscribeRepository) {
         this.modelMapper = modelMapper;
         this.houseRepository = houseRepository;
         this.houseDetailRepository = houseDetailRepository;
@@ -64,6 +66,7 @@ public class HouseServiceImpl implements HouseService {
         this.qiNiuProperties = qiNiuProperties;
         this.qiNiuService = qiNiuService;
         this.searchService = searchService;
+        this.houseSubscribeRepository = houseSubscribeRepository;
     }
 
     @Override
@@ -179,6 +182,13 @@ public class HouseServiceImpl implements HouseService {
         result.setPictures(pictureDTOS);
         result.setTags(tagList);
 
+        // 若已登录，查询我的预约状态
+        if (LoginUserUtil.getLoginUserId() > 0) {
+            HouseSubscribe subscribe = houseSubscribeRepository.findByHouseIdAndUserId(house.getId(), LoginUserUtil.getLoginUserId());
+            if (subscribe != null) {
+                result.setSubscribeStatus(subscribe.getStatus());
+            }
+        }
         return ResultVo.of(result);
     }
 
@@ -313,6 +323,7 @@ public class HouseServiceImpl implements HouseService {
         final var houseDTOList = wrapperHouseDTOListInfo(houseList);
         return new MultiResultVo<>(houseIdsResult.getTotal(), houseDTOList);
     }
+
 
     /**
      * 先根据关键词索引出匹配的房源id，再去数据库查询

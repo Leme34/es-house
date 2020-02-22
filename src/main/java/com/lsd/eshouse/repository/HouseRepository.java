@@ -16,4 +16,11 @@ public interface HouseRepository extends JpaRepository<House, Integer>, JpaSpeci
     @Modifying
     @Query("update House as house set house.status = :status where house.id = :id")
     void updateStatus(@Param(value = "id") Integer id, @Param(value = "status") int status);
+
+    /**
+     * 更新被预约看房的次数
+     */
+    @Modifying
+    @Query("update House as house set house.watchTimes = house.watchTimes + 1 where house.id = :id")
+    void updateWatchTimes(@Param(value = "id") Integer houseId);
 }

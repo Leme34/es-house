@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * 生产自定义 单例HttpClient 的工厂bean
+ * 本质上还是一个Bean，也归BeanFactory管理，获取HttpClient的bean对象时会调用此FactoryBean的getObject()返回
  */
 @Component
 public class HttpClientFactoryBean implements FactoryBean<HttpClient> {
@@ -34,25 +35,25 @@ public class HttpClientFactoryBean implements FactoryBean<HttpClient> {
     @Override
     public HttpClient getObject() throws Exception {
         ConnectionConfig config = ConnectionConfig.custom()
-            .setCharset(StandardCharsets.UTF_8)
-            .build();
+                .setCharset(StandardCharsets.UTF_8)
+                .build();
 
         RequestConfig defaultRequestConfig = RequestConfig.custom()
-            .setConnectTimeout(DEFAULT_CONNECTION_TIMEOUT)
-            .setSocketTimeout(DEFAULT_SOCKET_TIMEOUT)
-            .setConnectionRequestTimeout(DEFAULT_TIMEOUT)
-            .build();
+                .setConnectTimeout(DEFAULT_CONNECTION_TIMEOUT)
+                .setSocketTimeout(DEFAULT_SOCKET_TIMEOUT)
+                .setConnectionRequestTimeout(DEFAULT_TIMEOUT)
+                .build();
 
         return HttpClients.custom()
-            .setMaxConnPerRoute(DEFAULT_MAX_PER_ROUTE)
-            .setMaxConnTotal(DEFAULT_MAX_TOTAL)
-            .setRetryHandler((exception, executionCount, context) -> executionCount <= 3 && (exception instanceof NoHttpResponseException
-                                                                                         || exception instanceof ClientProtocolException
-                                                                                         || exception instanceof SocketTimeoutException
-                                                                                         || exception instanceof ConnectTimeoutException))
-            .setDefaultConnectionConfig(config)
-            .setDefaultRequestConfig(defaultRequestConfig)
-            .build();
+                .setMaxConnPerRoute(DEFAULT_MAX_PER_ROUTE)
+                .setMaxConnTotal(DEFAULT_MAX_TOTAL)
+                .setRetryHandler((exception, executionCount, context) -> executionCount <= 3 && (exception instanceof NoHttpResponseException
+                        || exception instanceof ClientProtocolException
+                        || exception instanceof SocketTimeoutException
+                        || exception instanceof ConnectTimeoutException))
+                .setDefaultConnectionConfig(config)
+                .setDefaultRequestConfig(defaultRequestConfig)
+                .build();
     }
 
     //Bean的类型

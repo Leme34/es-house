@@ -13,7 +13,8 @@
     <link href="/static/css/main.css" rel='stylesheet' type='text/css'/>
     <link href="/static/lib/layui/layui.css" rel="stylesheet" type="text/css"/>
     <link href="/static/css/rent-map.css" rel="stylesheet" type="text/css"/>
-    <link rel="stylesheet" href="http://api.map.baidu.com/library/SearchInfoWindow/1.5/src/SearchInfoWindow_min.css" />
+<!--    <link rel="stylesheet" href="http://api.map.baidu.com/library/SearchInfoWindow/1.5/src/SearchInfoWindow_min.css" />-->
+
 </head>
 <body>
 <header th:replace="common :: header"></header>
@@ -87,13 +88,22 @@
     </div>
 </div>
 <!--<div th:include="common :: footer"></div>-->
-<script type="text/javascript" src="http://api.map.baidu.com/api?v=2.0&ak=DruigrV5rQc2z8Av8zm4lVmIEsg5Ap0c"></script>
+
+
+<!-- 百度地图 -->
+<script type="text/javascript" src="http://api.map.baidu.com/api?v=3.0&ak=***"></script>
 <script type="text/javascript" src="/static/js/baidu-map/TextIconOverlay.js"></script>
 <script type="text/javascript" src="/static/js/baidu-map/MarkerClusterer.js"></script>
 <script type="text/javascript" src="http://api.map.baidu.com/library/SearchInfoWindow/1.5/src/SearchInfoWindow_min.js"></script>
+<script type="text/javascript" src="/static/js/rent-map-baidu.js"></script>
+
+<!-- 高德地图 -->
+<!--<script src="https://webapi.amap.com/maps?v=1.4.15&key=***"></script>-->
+<!--<script type="text/javascript" src="/static/js/rent-map-gaode.js"></script>-->
+
+
 <script type="text/javascript" src="/static/lib/jquery/1.9.1/jquery.min.js"></script>
 <script type="text/javascript" src="/static/lib/layui/layui.js"></script>
-<script type="text/javascript" src="/static/js/rent-map.js"></script>
 <script type="text/javascript" th:inline="javascript">
     // 初始化加载地图数据
     var city = [[${city}]],

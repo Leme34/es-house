@@ -1,12 +1,18 @@
 package com.lsd.eshouse.service;
 
+import com.lsd.eshouse.common.constant.HouseSubscribeStatus;
 import com.lsd.eshouse.common.dto.HouseDTO;
+import com.lsd.eshouse.common.dto.HouseSubscribeDTO;
 import com.lsd.eshouse.common.form.DatatableSearchForm;
 import com.lsd.eshouse.common.form.HouseForm;
 import com.lsd.eshouse.common.form.MapSearchForm;
 import com.lsd.eshouse.common.form.RentSearchForm;
 import com.lsd.eshouse.common.vo.MultiResultVo;
 import com.lsd.eshouse.common.vo.ResultVo;
+import org.springframework.data.util.Pair;
+
+import java.time.LocalDateTime;
+import java.util.Date;
 
 /**
  * 房屋管理服务接口
@@ -52,4 +58,5 @@ public interface HouseService {
      * 地图查询当前地图视野边界范围内的房源
      */
     MultiResultVo<HouseDTO> mapSearchByBound(MapSearchForm form);
+
 }

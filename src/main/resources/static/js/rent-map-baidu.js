@@ -10,11 +10,12 @@ var regionCountMap = {}, // 地区数据
     customLayer; // 麻点图
 
 function load(city, regions, aggData) {
-    // 百度地图API功能
-    var map = new BMap.Map("allmap", {minZoom: 12}); // 创建实例。设置地图显示最大级别为城市
-    var point = new BMap.Point(city.baiduMapLongitude, city.baiduMapLatitude); // 城市中心
+    // 百度地图API，创建地图
+    var map = new BMap.Map("allmap", {minZoom: 12}); // 创建地图实例。设置地图显示最大级别为城市
+    var point = new BMap.Point(city.baiduMapLongitude, city.baiduMapLatitude); // 城市中心点
     map.centerAndZoom(point, 12); // 初始化地图，设置中心点坐标及地图级别
 
+    // 加入控件
     map.addControl(new BMap.NavigationControl({enableGeolocation: true})); // 添加比例尺控件
     map.addControl(new BMap.ScaleControl({anchor: BMAP_ANCHOR_TOP_LEFT})); // 左上角
     map.enableScrollWheelZoom(true); // 开启鼠标滚轮缩放
@@ -23,7 +24,7 @@ function load(city, regions, aggData) {
     for (var i = 0; i < aggData.length; i++) {
         regionCountMap[aggData[i].key] = aggData[i].count;
     }
-    // 绘制地图
+    // 绘制地区
     drawRegion(map, regions);
 
     // 加载左边房源列表的数据
@@ -94,9 +95,9 @@ function drawRegion(map, regionList) {
         polygonContext[textContent] = [];
         // 闭包传参
         (function (textContent) {
-            let address = city.cn_name + regionList[i].cn_name;
+            let regionName = city.cn_name + regionList[i].cn_name;
             // 调用百度地图API获取行政区域边界，第一个参数是详细地点，第二个参数是回调函数
-            boundary.get(address, function (rs) {
+            boundary.get(regionName, function (rs) {
                 var count = rs.boundaries.length; // 行政区域边界点的数量
                 if (count === 0) {
                     alert('未能获取当前输入行政区域')
@@ -152,21 +153,27 @@ function drawRegion(map, regionList) {
             map.panTo(event.point);
         });
     }
-
+    // 若麻点图未显示则进行绘制
     if (!customLayer) {
         // 自定义图层
-        customLayer = new BMap.CustomLayer({
-            geotableId: 208990,
-            q: '', // 检索关键字
-            tags: '', // 空格分隔的字符串
-            filter: '', // 过滤条件，参考：http://lbsyun.baidu.com/index.php?title=lbscloud/api/geosearch
-            pointDensityType: BMAP_POINT_DENSITY_HIGH
+        var customLayer=new BMap.CustomLayer({
+            databox: 209006,
+            q: '', //检索关键字
+            tags: '', //空格分隔的多字符串
+            filter: '' //过滤条件,参考http://lbsyun.baidu.com/index.php?title=lbscloud/api/geosearch
         });
-        map.addTileLayer(customLayer); // 添加自定义图层
+        map.addTileLayer(customLayer);//添加自定义图层
+        // customLayer = new BMap.CustomLayer({
+        //     geotableId: 209006,
+        //     q: '', // 检索关键字
+        //     tags: '', // 空格分隔的多个字符串
+        //     filter: '', // 过滤条件，参考：http://lbsyun.baidu.com/index.php?title=lbscloud/api/geosearch
+        //     pointDensityType: BMAP_POINT_DENSITY_HIGH   //麻点密度高
+        // });
         customLayer.addEventListener('onhotspotclick', houseTip); // 单击图层事件
     }
 
-    // 百度POI数据标签
+    // 点击百度云麻点展示的数据标签
     function houseTip(e) {
         var customPoi = e.customPoi; // poi的默认字段
         var contentPoi = e.content; // poi的自定义字段
@@ -217,6 +224,7 @@ function drawRegion(map, regionList) {
  * @param _map event.target
  */
 function mapResize(_map) {
+    // 获取视野边界
     var bounds = _map.getBounds(),
         southWest = bounds.getSouthWest(), // 西南角
         northEast = bounds.getNorthEast(); // 东北角

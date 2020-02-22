@@ -59,7 +59,7 @@ public class House implements Serializable {
     private Integer totalFloor;
 
     /**
-     * 被看次数
+     * 被预约看房次数
      */
     @Column(name = "watch_times")
     private Integer watchTimes = 0;
